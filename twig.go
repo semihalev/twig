@@ -38,29 +38,35 @@ type Template struct {
 
 // Environment holds configuration and context for template rendering
 type Environment struct {
-	globals    map[string]interface{}
-	filters    map[string]FilterFunc
-	functions  map[string]FunctionFunc
-	tests      map[string]TestFunc
-	operators  map[string]OperatorFunc
-	extensions []Extension
-	cache      bool
-	autoescape bool
-	debug      bool
-	sandbox    bool
+	globals           map[string]interface{}
+	filters           map[string]FilterFunc
+	functions         map[string]FunctionFunc
+	tests             map[string]TestFunc
+	operators         map[string]OperatorFunc
+	extensions        []Extension
+	cache             bool
+	autoescape        bool
+	debug             bool
+	sandbox           bool
+	preserveWhitespace bool // Controls whether whitespace is preserved in HTML
+	prettyOutputHTML   bool // Controls whether to format HTML with proper spacing
+	preserveAttributes bool // Controls whether HTML attributes are properly quoted and spaced
 }
 
 // New creates a new Twig engine instance
 func New() *Engine {
 	env := &Environment{
-		globals:    make(map[string]interface{}),
-		filters:    make(map[string]FilterFunc),
-		functions:  make(map[string]FunctionFunc),
-		tests:      make(map[string]TestFunc),
-		operators:  make(map[string]OperatorFunc),
-		autoescape: true,
-		cache:      true,  // Enable caching by default
-		debug:      false, // Disable debug mode by default
+		globals:           make(map[string]interface{}),
+		filters:           make(map[string]FilterFunc),
+		functions:         make(map[string]FunctionFunc),
+		tests:             make(map[string]TestFunc),
+		operators:         make(map[string]OperatorFunc),
+		autoescape:        true,
+		cache:             true,  // Enable caching by default
+		debug:             false, // Disable debug mode by default
+		preserveWhitespace: false, // Disable full whitespace preservation by default
+		prettyOutputHTML:   true,  // Enable pretty HTML output by default
+		preserveAttributes: true,  // Enable proper attribute formatting by default
 	}
 
 	engine := &Engine{
@@ -339,6 +345,36 @@ func (e *Engine) IsCacheEnabled() bool {
 // IsAutoReloadEnabled returns true if auto-reload is enabled
 func (e *Engine) IsAutoReloadEnabled() bool {
 	return e.autoReload
+}
+
+// SetPreserveWhitespace enables or disables HTML whitespace preservation
+func (e *Engine) SetPreserveWhitespace(enabled bool) {
+	e.environment.preserveWhitespace = enabled
+}
+
+// IsPreserveWhitespaceEnabled returns true if HTML whitespace preservation is enabled
+func (e *Engine) IsPreserveWhitespaceEnabled() bool {
+	return e.environment.preserveWhitespace
+}
+
+// SetPrettyOutputHTML enables or disables pretty HTML output formatting
+func (e *Engine) SetPrettyOutputHTML(enabled bool) {
+	e.environment.prettyOutputHTML = enabled
+}
+
+// IsPrettyOutputHTMLEnabled returns true if pretty HTML output is enabled
+func (e *Engine) IsPrettyOutputHTMLEnabled() bool {
+	return e.environment.prettyOutputHTML
+}
+
+// SetPreserveAttributes enables or disables HTML attribute preservation
+func (e *Engine) SetPreserveAttributes(enabled bool) {
+	e.environment.preserveAttributes = enabled
+}
+
+// IsPreserveAttributesEnabled returns true if HTML attribute preservation is enabled
+func (e *Engine) IsPreserveAttributesEnabled() bool {
+	return e.environment.preserveAttributes
 }
 
 // GetCachedTemplateCount returns the number of templates in the cache

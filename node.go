@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -18,6 +19,127 @@ type Node interface {
 
 	// Line returns the source line number
 	Line() int
+}
+
+// NewRootNode creates a new root node
+func NewRootNode(children []Node, line int) *RootNode {
+	return &RootNode{
+		children: children,
+		line:     line,
+	}
+}
+
+// NewTextNode creates a new text node
+func NewTextNode(content string, line int) *TextNode {
+	return &TextNode{
+		content: content,
+		line:    line,
+	}
+}
+
+// NewPrintNode creates a new print node
+func NewPrintNode(expression Node, line int) *PrintNode {
+	return &PrintNode{
+		expression: expression,
+		line:       line,
+	}
+}
+
+// NewIfNode creates a new if node
+func NewIfNode(conditions []Node, bodies [][]Node, elseBranch []Node, line int) *IfNode {
+	return &IfNode{
+		conditions: conditions,
+		bodies:     bodies,
+		elseBranch: elseBranch,
+		line:       line,
+	}
+}
+
+// NewForNode creates a new for loop node
+func NewForNode(keyVar, valueVar string, sequence Node, body, elseBranch []Node, line int) *ForNode {
+	return &ForNode{
+		keyVar:     keyVar,
+		valueVar:   valueVar,
+		sequence:   sequence,
+		body:       body,
+		elseBranch: elseBranch,
+		line:       line,
+	}
+}
+
+// NewBlockNode creates a new block node
+func NewBlockNode(name string, body []Node, line int) *BlockNode {
+	return &BlockNode{
+		name: name,
+		body: body,
+		line: line,
+	}
+}
+
+// NewExtendsNode creates a new extends node
+func NewExtendsNode(parent Node, line int) *ExtendsNode {
+	return &ExtendsNode{
+		parent: parent,
+		line:   line,
+	}
+}
+
+// NewIncludeNode creates a new include node
+func NewIncludeNode(template Node, variables map[string]Node, ignoreMissing, only bool, line int) *IncludeNode {
+	return &IncludeNode{
+		template:      template,
+		variables:     variables,
+		ignoreMissing: ignoreMissing,
+		only:          only,
+		line:          line,
+	}
+}
+
+// NewSetNode creates a new set node
+func NewSetNode(name string, value Node, line int) *SetNode {
+	return &SetNode{
+		name:  name,
+		value: value,
+		line:  line,
+	}
+}
+
+// NewCommentNode creates a new comment node
+func NewCommentNode(content string, line int) *CommentNode {
+	return &CommentNode{
+		content: content,
+		line:    line,
+	}
+}
+
+// NewMacroNode creates a new macro node
+func NewMacroNode(name string, params []string, defaults map[string]Node, body []Node, line int) *MacroNode {
+	return &MacroNode{
+		name:     name,
+		params:   params,
+		defaults: defaults,
+		body:     body,
+		line:     line,
+	}
+}
+
+// NewImportNode creates a new import node
+func NewImportNode(template Node, module string, line int) *ImportNode {
+	return &ImportNode{
+		template: template,
+		module:   module,
+		line:     line,
+	}
+}
+
+// NewFromImportNode creates a new from import node
+func NewFromImportNode(template Node, macros []string, aliases map[string]string, line int) *FromImportNode {
+	return &FromImportNode{
+		template: template,
+		macros:   macros,
+		aliases:  aliases,
+		line:     line,
+	}
 }
 
 // NodeType represents the type of a node
@@ -212,7 +334,78 @@ func (n *RootNode) Line() int {
 
 // Implement Node interface for TextNode
 func (n *TextNode) Render(w io.Writer, ctx *RenderContext) error {
-	_, err := w.Write([]byte(n.content))
+	content := n.content
+	
+	// Track entry into script and style tags
+	// This affects how we handle whitespace and quoting of values
+	lowerContent := strings.ToLower(content)
+	
+	// Check for <script> tags (case-insensitive)
+	if strings.Contains(lowerContent, "<script") && !strings.Contains(lowerContent, "</script") {
+		ctx.inScriptTag = true
+	} else if strings.Contains(lowerContent, "</script>") {
+		// Set flag to false AFTER rendering this node
+		defer func() { ctx.inScriptTag = false }()
+	}
+	
+	// Check for <style> tags (case-insensitive)
+	if strings.Contains(lowerContent, "<style") && !strings.Contains(lowerContent, "</style") {
+		ctx.inStyleTag = true
+	} else if strings.Contains(lowerContent, "</style>") {
+		// Set flag to false AFTER rendering this node
+		defer func() { ctx.inStyleTag = false }()
+	}
+	
+	// Apply whitespace processing based on Environment settings
+	if ctx.env != nil {
+		// Preserve whitespace feature is enabled by default
+		if ctx.env.preserveWhitespace {
+			_, err := w.Write([]byte(content))
+			return err
+		}
+		
+		// Process internal Script/Style tag contents specially or entering nodes
+		if ctx.inScriptTag || ctx.inStyleTag || 
+		   strings.Contains(lowerContent, "<script") || strings.Contains(lowerContent, "<style") {
+			_, err := w.Write([]byte(content))
+			return err
+		}
+		
+		// Process HTML content
+		containsHTML := strings.Contains(content, "<") && strings.Contains(content, ">")
+		
+		if containsHTML && ctx.env.prettyOutputHTML {
+			// Add spaces after colons in text content to improve readability
+			colonFixRegex := regexp.MustCompile(`:\s*(\S)`)
+			content = colonFixRegex.ReplaceAllString(content, ": $1")
+			
+			// Process HTML attributes if enabled
+			if ctx.env.preserveAttributes {
+				// Ensure quotes around attribute values
+				attrQuoteRegex := regexp.MustCompile(`=([a-zA-Z0-9_.-]+)(\s|>)`)
+				content = attrQuoteRegex.ReplaceAllString(content, `="$1"$2`)
+				
+				// Fix self-closing tags to have proper spacing
+				selfCloseRegex := regexp.MustCompile(`/\s*>`)
+				content = selfCloseRegex.ReplaceAllString(content, " />")
+			}
+			
+			// Process HTML tags for better spacing if pretty output is enabled
+			// Add space after > and before < to separate tags from content
+			tagTextRegex := regexp.MustCompile(`(>)(\S)`)
+			content = tagTextRegex.ReplaceAllString(content, "$1 $2")
+			
+			// Add space before < if preceded by non-whitespace
+			textTagRegex := regexp.MustCompile(`(\S)(<)`)
+			content = textTagRegex.ReplaceAllString(content, "$1 $2")
+		} else if !containsHTML && ctx.env.prettyOutputHTML {
+			// For plain text content, normalize multiple spaces to single space
+			wsRegex := regexp.MustCompile(`[ \t]+`)
+			content = wsRegex.ReplaceAllString(content, " ")
+		}
+	}
+	
+	_, err := w.Write([]byte(content))
 	return err
 }
 
@@ -400,91 +593,66 @@ func (n *ForNode) Render(w io.Writer, ctx *RenderContext) error {
 		loopContext.context[k] = v
 	}
 
-	// Handle different types of sequences
+	// Iterate over the sequence based on its type
 	switch v.Kind() {
-	case reflect.Slice, reflect.Array:
-		hasItems = v.Len() > 0
-		// Iterate over the slice/array
-		for i := 0; i < v.Len(); i++ {
-			// Set loop variables
-			if n.keyVar != "" {
-				loopContext.context[n.keyVar] = i
-			}
-			loopContext.context[n.valueVar] = v.Index(i).Interface()
-
-			// Add loop metadata
-			loopContext.context["loop"] = map[string]interface{}{
-				"index":     i + 1,
-				"index0":    i,
-				"revindex":  v.Len() - i,
-				"revindex0": v.Len() - i - 1,
-				"first":     i == 0,
-				"last":      i == v.Len()-1,
-				"length":    v.Len(),
-			}
-
-			// Render the loop body
-			for _, node := range n.body {
-				if err := node.Render(w, loopContext); err != nil {
-					return err
-				}
-			}
+	case reflect.Map:
+		// Initialize loop.index and loop.index0
+		loopContext.context["loop"] = map[string]interface{}{
+			"index":  1,
+			"index0": 0,
+			"first":  true,
+			"last":   false,
+			"length": v.Len(),
 		}
 
-	case reflect.Map:
-		hasItems = v.Len() > 0
-		// Get the map keys
 		keys := v.MapKeys()
-
-		// Iterate over the map
 		for i, key := range keys {
-			// Set loop variables
+			// Update loop variables
+			loop := loopContext.context["loop"].(map[string]interface{})
+			loop["index"] = i + 1
+			loop["index0"] = i
+			loop["first"] = i == 0
+			loop["last"] = i == len(keys)-1
+
+			// Set the key and value variables
 			if n.keyVar != "" {
 				loopContext.context[n.keyVar] = key.Interface()
 			}
 			loopContext.context[n.valueVar] = v.MapIndex(key).Interface()
 
-			// Add loop metadata
-			loopContext.context["loop"] = map[string]interface{}{
-				"index":     i + 1,
-				"index0":    i,
-				"revindex":  len(keys) - i,
-				"revindex0": len(keys) - i - 1,
-				"first":     i == 0,
-				"last":      i == len(keys)-1,
-				"length":    len(keys),
-			}
-
 			// Render the loop body
 			for _, node := range n.body {
 				if err := node.Render(w, loopContext); err != nil {
 					return err
 				}
 			}
+
+			hasItems = true
 		}
 
-	case reflect.String:
-		str := v.String()
-		hasItems = len(str) > 0
+	case reflect.Slice, reflect.Array:
+		// Initialize loop.index and loop.index0
+		loopContext.context["loop"] = map[string]interface{}{
+			"index":  1,
+			"index0": 0,
+			"first":  true,
+			"last":   false,
+			"length": v.Len(),
+		}
 
-		// Iterate over string characters
-		for i, char := range str {
-			// Set loop variables
+		for i := 0; i < v.Len(); i++ {
+			// Update loop variables
+			loop := loopContext.context["loop"].(map[string]interface{})
+			loop["index"] = i + 1
+			loop["index0"] = i
+			loop["first"] = i == 0
+			loop["last"] = i == v.Len()-1
+
+			// Set the key and value variables
 			if n.keyVar != "" {
 				loopContext.context[n.keyVar] = i
 			}
-			loopContext.context[n.valueVar] = string(char)
-
-			// Add loop metadata
-			loopContext.context["loop"] = map[string]interface{}{
-				"index":     i + 1,
-				"index0":    i,
-				"revindex":  len(str) - i,
-				"revindex0": len(str) - i - 1,
-				"first":     i == 0,
-				"last":      i == len(str)-1,
-				"length":    len(str),
-			}
+			loopContext.context[n.valueVar] = v.Index(i).Interface()
 
 			// Render the loop body
 			for _, node := range n.body {
@@ -492,35 +660,62 @@ func (n *ForNode) Render(w io.Writer, ctx *RenderContext) error {
 					return err
 				}
 			}
+
+			hasItems = true
+		}
+
+	case reflect.String:
+		// String iteration iterates over runes (unicode code points)
+		str := v.String()
+		runes := []rune(str)
+
+		// Initialize loop.index and loop.index0
+		loopContext.context["loop"] = map[string]interface{}{
+			"index":  1,
+			"index0": 0,
+			"first":  true,
+			"last":   false,
+			"length": len(runes),
+		}
+
+		for i, r := range runes {
+			// Update loop variables
+			loop := loopContext.context["loop"].(map[string]interface{})
+			loop["index"] = i + 1
+			loop["index0"] = i
+			loop["first"] = i == 0
+			loop["last"] = i == len(runes)-1
+
+			// Set the key and value variables
+			if n.keyVar != "" {
+				loopContext.context[n.keyVar] = i
+			}
+			loopContext.context[n.valueVar] = string(r)
+
+			// Render the loop body
+			for _, node := range n.body {
+				if err := node.Render(w, loopContext); err != nil {
+					return err
+				}
+			}
+
+			hasItems = true
 		}
 
 	default:
-		// For non-iterable types, just use the value as is
-		// This might not be ideal, but it's more forgiving
-		loopContext.context[n.valueVar] = sequence
-
-		// Add minimal loop metadata
-		loopContext.context["loop"] = map[string]interface{}{
-			"index":     1,
-			"index0":    0,
-			"revindex":  1,
-			"revindex0": 0,
-			"first":     true,
-			"last":      true,
-			"length":    1,
-		}
-
-		// Render the loop body
-		for _, node := range n.body {
-			if err := node.Render(w, loopContext); err != nil {
-				return err
+		// For other types, we can't iterate
+		// Render the else branch if present
+		if len(n.elseBranch) > 0 {
+			for _, node := range n.elseBranch {
+				if err := node.Render(w, ctx); err != nil {
+					return err
+				}
 			}
 		}
-
-		hasItems = true
+		return nil
 	}
 
-	// If no items and we have an else branch, render it
+	// If we didn't iterate over anything and there's an else branch, render it
 	if !hasItems && len(n.elseBranch) > 0 {
 		for _, node := range n.elseBranch {
 			if err := node.Render(w, ctx); err != nil {
@@ -542,39 +737,29 @@ func (n *ForNode) Line() int {
 
 // Implement Node interface for BlockNode
 func (n *BlockNode) Render(w io.Writer, ctx *RenderContext) error {
-	// During extension, just register the block
+	// Register this block in the context
+	if ctx.blocks == nil {
+		ctx.blocks = make(map[string][]Node)
+	}
+	ctx.blocks[n.name] = n.body
+
+	// If this is an extending template, don't render the block yet
 	if ctx.extending {
-		if ctx.blocks == nil {
-			ctx.blocks = make(map[string][]Node)
-		}
-		ctx.blocks[n.name] = []Node{n} // Replace any parent blocks - child blocks take precedence
 		return nil
 	}
 
-	// For regular rendering, find the block to use
-	var blockToRender *BlockNode
-
-	// Use the most recent block definition
-	if blocks, ok := ctx.blocks[n.name]; ok && len(blocks) > 0 {
-		// Use the block definition from the child template
-		blockToRender = blocks[len(blocks)-1].(*BlockNode)
-	} else {
-		// If no overrides found, use this one
-		blockToRender = n
-	}
-
-	// Set current block for parent() function
+	// Save the current block for the parent() function
 	oldBlock := ctx.currentBlock
-	ctx.currentBlock = blockToRender
+	ctx.currentBlock = n
 
-	// Render the block contents
-	for _, node := range blockToRender.body {
+	// Render the block content
+	for _, node := range n.body {
 		if err := node.Render(w, ctx); err != nil {
 			return err
 		}
 	}
 
-	// Restore previous block
+	// Restore the previous block
 	ctx.currentBlock = oldBlock
 
 	return nil
@@ -590,44 +775,28 @@ func (n *BlockNode) Line() int {
 
 // Implement Node interface for ExtendsNode
 func (n *ExtendsNode) Render(w io.Writer, ctx *RenderContext) error {
-	// Get the parent template name
+	// Evaluate the parent template name
 	parentName, err := ctx.EvaluateExpression(n.parent)
 	if err != nil {
 		return err
 	}
 
-	// Convert to string if needed
+	// Get the parent template name as a string
 	parentNameStr := ctx.ToString(parentName)
 
-	// Get the parent template from the engine
-	engine := ctx.engine
-	if engine == nil {
-		return fmt.Errorf("no engine available in context")
+	// Check if we have an engine to load the parent template
+	if ctx.engine == nil {
+		return fmt.Errorf("cannot extend without an engine")
 	}
 
-	parent, err := engine.Load(parentNameStr)
+	// Load the parent template
+	parentTemplate, err := ctx.engine.Load(parentNameStr)
 	if err != nil {
 		return err
 	}
 
-	// Setup a new context for the parent template, using the blocks that have already been collected
-	parentCtx := &RenderContext{
-		env:          ctx.env,
-		context:      ctx.context,
-		blocks:       ctx.blocks, // Share blocks with the child template
-		macros:       ctx.macros,
-		parent:       ctx.parent,
-		engine:       ctx.engine,
-		extending:    false, // The parent will be the final rendering
-		currentBlock: nil,
-	}
-
-	// Now render the parent template which will use our blocks
-	if err := parent.nodes.Render(w, parentCtx); err != nil {
-		return err
-	}
-
-	return nil
+	// Render the parent template
+	return parentTemplate.nodes.Render(w, ctx)
 }
 
 func (n *ExtendsNode) Type() NodeType {
@@ -640,69 +809,61 @@ func (n *ExtendsNode) Line() int {
 
 // Implement Node interface for IncludeNode
 func (n *IncludeNode) Render(w io.Writer, ctx *RenderContext) error {
-	// Get the template name
+	// Evaluate the template name
 	templateName, err := ctx.EvaluateExpression(n.template)
 	if err != nil {
 		return err
 	}
 
-	// Convert to string if needed
+	// Get the template name as a string
 	templateNameStr := ctx.ToString(templateName)
 
-	// Get the template from the engine
-	engine := ctx.engine
-	if engine == nil {
-		return fmt.Errorf("no engine available in context")
+	// Check if we have an engine to load the included template
+	if ctx.engine == nil {
+		return fmt.Errorf("cannot include without an engine")
 	}
 
-	// Load the template
-	template, err := engine.Load(templateNameStr)
+	// Load the included template
+	includedTemplate, err := ctx.engine.Load(templateNameStr)
 	if err != nil {
 		if n.ignoreMissing {
-			// Skip if we're ignoring missing templates
+			// If ignore_missing is true, silently skip the inclusion
 			return nil
 		}
 		return err
 	}
 
-	// Create a context for the included template
-	includeCtx := &RenderContext{
-		env:          ctx.env,
-		context:      make(map[string]interface{}),
-		blocks:       ctx.blocks, // Share blocks with the parent template
-		macros:       ctx.macros,
-		parent:       nil, // Will set this based on the 'only' flag below
-		engine:       ctx.engine,
-		extending:    false,
-		currentBlock: nil,
+	// Create a child context for the included template
+	childCtx := &RenderContext{
+		env:     ctx.env,
+		context: make(map[string]interface{}),
+		blocks:  ctx.blocks,
+		macros:  ctx.macros,
+		engine:  ctx.engine,
+		parent:  ctx,
 	}
 
-	// If not "only", copy all variables from parent context
+	// If only=true, don't inherit the parent context
 	if !n.only {
+		// Copy all variables from the parent context
 		for k, v := range ctx.context {
-			includeCtx.context[k] = v
+			childCtx.context[k] = v
 		}
-
-		// Also allow access to parent for variable lookup
-		includeCtx.parent = ctx
-	} else {
-		// When using 'only', don't allow access to parent context
-		includeCtx.parent = nil
 	}
 
-	// Evaluate and add the with variables
+	// Add the variables defined in the include tag
 	if n.variables != nil {
-		for name, node := range n.variables {
-			value, err := ctx.EvaluateExpression(node)
+		for name, valueNode := range n.variables {
+			value, err := ctx.EvaluateExpression(valueNode)
 			if err != nil {
 				return err
 			}
-			includeCtx.context[name] = value
+			childCtx.context[name] = value
 		}
 	}
 
 	// Render the included template
-	return template.nodes.Render(w, includeCtx)
+	return includedTemplate.nodes.Render(w, childCtx)
 }
 
 func (n *IncludeNode) Type() NodeType {
@@ -715,16 +876,15 @@ func (n *IncludeNode) Line() int {
 
 // Implement Node interface for SetNode
 func (n *SetNode) Render(w io.Writer, ctx *RenderContext) error {
-	// Evaluate the value expression
+	// Evaluate the expression
 	value, err := ctx.EvaluateExpression(n.value)
 	if err != nil {
 		return err
 	}
 
 	// Set the variable in the context
-	ctx.SetVariable(n.name, value)
+	ctx.context[n.name] = value
 
-	// The set tag doesn't output anything
 	return nil
 }
 
@@ -736,133 +896,72 @@ func (n *SetNode) Line() int {
 	return n.line
 }
 
-// NewRootNode creates a new root node
-func NewRootNode(children []Node, line int) *RootNode {
-	return &RootNode{
-		children: children,
-		line:     line,
-	}
+// Implement Node interface for CommentNode
+func (n *CommentNode) Render(w io.Writer, ctx *RenderContext) error {
+	// Comments don't render anything
+	return nil
 }
 
-// NewTextNode creates a new text node
-func NewTextNode(content string, line int) *TextNode {
-	return &TextNode{
-		content: content,
-		line:    line,
-	}
+func (n *CommentNode) Type() NodeType {
+	return NodeComment
 }
 
-// NewPrintNode creates a new print node
-func NewPrintNode(expression Node, line int) *PrintNode {
-	return &PrintNode{
-		expression: expression,
-		line:       line,
-	}
-}
-
-// NewForNode creates a new for loop node
-func NewForNode(keyVar, valueVar string, sequence Node, body, elseBranch []Node, line int) *ForNode {
-	return &ForNode{
-		keyVar:     keyVar,
-		valueVar:   valueVar,
-		sequence:   sequence,
-		body:       body,
-		elseBranch: elseBranch,
-		line:       line,
-	}
-}
-
-// NewIfNode creates a new if node
-func NewIfNode(condition Node, body, elseBranch []Node, line int) *IfNode {
-	return &IfNode{
-		conditions: []Node{condition},
-		bodies:     [][]Node{body},
-		elseBranch: elseBranch,
-		line:       line,
-	}
-}
-
-// NewBlockNode creates a new block node
-func NewBlockNode(name string, body []Node, line int) *BlockNode {
-	return &BlockNode{
-		name: name,
-		body: body,
-		line: line,
-	}
-}
-
-// NewExtendsNode creates a new extends node
-func NewExtendsNode(parent Node, line int) *ExtendsNode {
-	return &ExtendsNode{
-		parent: parent,
-		line:   line,
-	}
-}
-
-// NewIncludeNode creates a new include node
-func NewIncludeNode(template Node, variables map[string]Node, ignoreMissing, only bool, line int) *IncludeNode {
-	return &IncludeNode{
-		template:      template,
-		variables:     variables,
-		ignoreMissing: ignoreMissing,
-		only:          only,
-		line:          line,
-	}
-}
-
-// NewSetNode creates a new set node
-func NewSetNode(name string, value Node, line int) *SetNode {
-	return &SetNode{
-		name:  name,
-		value: value,
-		line:  line,
-	}
-}
-
-// Make FunctionNode implement Node interface
-func (n *FunctionNode) Render(w io.Writer, ctx *RenderContext) error {
-	// Evaluate arguments
-	args := make([]interface{}, len(n.args))
-	for i, arg := range n.args {
-		val, err := ctx.EvaluateExpression(arg)
-		if err != nil {
-			return err
-		}
-		args[i] = val
-	}
-
-	// Call the function
-	result, err := ctx.CallFunction(n.name, args)
-	if err != nil {
-		return err
-	}
-
-	// Check if result is a callable (for macros)
-	if callable, ok := result.(func(io.Writer) error); ok {
-		// Execute the callable directly
-		return callable(w)
-	}
-
-	// Write the result
-	_, err = w.Write([]byte(ctx.ToString(result)))
-	return err
-}
-
-func (n *FunctionNode) Type() NodeType {
-	return NodeFunction
-}
-
-func (n *FunctionNode) Line() int {
+func (n *CommentNode) Line() int {
 	return n.line
 }
 
 // Implement Node interface for MacroNode
 func (n *MacroNode) Render(w io.Writer, ctx *RenderContext) error {
+	// Create a macro function that captures the current context
+	macro := func(w io.Writer, args ...interface{}) error {
+		// Create a child context for macro execution
+		macroCtx := &RenderContext{
+			env:     ctx.env,
+			context: make(map[string]interface{}),
+			blocks:  ctx.blocks,
+			macros:  ctx.macros,
+			engine:  ctx.engine,
+			parent:  ctx,
+		}
+
+		// Map positional arguments to parameter names
+		for i, param := range n.params {
+			if i < len(args) {
+				macroCtx.context[param] = args[i]
+			} else if defaultExpr, hasDefault := n.defaults[param]; hasDefault {
+				// Use default value if provided
+				defaultVal, err := ctx.EvaluateExpression(defaultExpr)
+				if err != nil {
+					return err
+				}
+				macroCtx.context[param] = defaultVal
+			}
+		}
+
+		// Render the macro body
+		for _, node := range n.body {
+			if err := node.Render(w, macroCtx); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
 	// Register the macro in the context
 	if ctx.macros == nil {
 		ctx.macros = make(map[string]Node)
 	}
+	// Store the macro node directly
 	ctx.macros[n.name] = n
+
+	// Also store a function that can be called
+	ctx.context[n.name] = func(args ...interface{}) func(io.Writer) error {
+		return func(w io.Writer) error {
+			return macro(w, args...)
+		}
+	}
+
 	return nil
 }
 
@@ -874,49 +973,35 @@ func (n *MacroNode) Line() int {
 	return n.line
 }
 
-// Call executes the macro with the given arguments
-func (n *MacroNode) Call(w io.Writer, ctx *RenderContext, args []interface{}) error {
-	// Temporary hardcode the expected HTML for the test case
-	if n.name == "input" && len(args) >= 2 {
-		if name, ok := args[0].(string); ok && name == "username" {
-			if val, ok := args[1].(string); ok && val == "user123" {
-				w.Write([]byte("\n  <input type=\"text\" name=\"username\" value=\"user123\" size=\"20\">"))
-				return nil
-			}
-		}
-	}
-
-	// Create a new context for the macro
-	macroContext := &RenderContext{
+// CallMacro calls a macro with the given arguments
+func (n *MacroNode) CallMacro(w io.Writer, ctx *RenderContext, args ...interface{}) error {
+	// Create a child context for macro execution
+	macroCtx := &RenderContext{
 		env:     ctx.env,
 		context: make(map[string]interface{}),
 		blocks:  ctx.blocks,
 		macros:  ctx.macros,
-		parent:  ctx.parent,
 		engine:  ctx.engine,
+		parent:  ctx,
 	}
 
-	// Set parameter values from arguments
+	// Map positional arguments to parameter names
 	for i, param := range n.params {
 		if i < len(args) {
-			// Use provided argument
-			macroContext.context[param] = args[i]
-		} else if defaultValue, ok := n.defaults[param]; ok {
-			// Use default value
-			value, err := ctx.EvaluateExpression(defaultValue)
+			macroCtx.context[param] = args[i]
+		} else if defaultExpr, hasDefault := n.defaults[param]; hasDefault {
+			// Use default value if provided
+			defaultVal, err := ctx.EvaluateExpression(defaultExpr)
 			if err != nil {
 				return err
 			}
-			macroContext.context[param] = value
-		} else {
-			// No argument or default, set to nil
-			macroContext.context[param] = nil
+			macroCtx.context[param] = defaultVal
 		}
 	}
 
 	// Render the macro body
 	for _, node := range n.body {
-		if err := node.Render(w, macroContext); err != nil {
+		if err := node.Render(w, macroCtx); err != nil {
 			return err
 		}
 	}
@@ -927,24 +1012,27 @@ func (n *MacroNode) Call(w io.Writer, ctx *RenderContext, args []interface{}) er
 // Implement Node interface for ImportNode
 func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Evaluate the template name
-	templateNameVal, err := ctx.EvaluateExpression(n.template)
+	templateName, err := ctx.EvaluateExpression(n.template)
 	if err != nil {
 		return err
 	}
 
-	templateName, ok := templateNameVal.(string)
-	if !ok {
-		return fmt.Errorf("template name must be a string at line %d", n.line)
+	// Get the template name as a string
+	templateNameStr := ctx.ToString(templateName)
+
+	// Check if we have an engine to load the imported template
+	if ctx.engine == nil {
+		return fmt.Errorf("cannot import without an engine")
 	}
 
-	// Load the template
-	template, err := ctx.engine.Load(templateName)
+	// Load the imported template
+	importedTemplate, err := ctx.engine.Load(templateNameStr)
 	if err != nil {
 		return err
 	}
 
-	// Create a new context for executing the template
-	importContext := &RenderContext{
+	// Create a context for the imported template
+	importCtx := &RenderContext{
 		env:     ctx.env,
 		context: make(map[string]interface{}),
 		blocks:  make(map[string][]Node),
@@ -952,20 +1040,27 @@ func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
 		engine:  ctx.engine,
 	}
 
-	// Execute the template without output to collect macros
-	var nullWriter NullWriter
-	if err := template.nodes.Render(&nullWriter, importContext); err != nil {
+	// Render the imported template to a null writer to collect macros
+	err = importedTemplate.nodes.Render(&NullWriter{}, importCtx)
+	if err != nil {
 		return err
 	}
 
-	// Create a module object with the macros
-	module := make(map[string]interface{})
-	for name, macro := range importContext.macros {
-		module[name] = macro
+	// Create a module object with all the macros
+	moduleObj := make(map[string]interface{})
+	for name, macro := range importCtx.macros {
+		if macroNode, ok := macro.(*MacroNode); ok {
+			// Create a wrapper function that captures the macro node
+			moduleObj[name] = func(args ...interface{}) func(io.Writer) error {
+				return func(w io.Writer) error {
+					return macroNode.CallMacro(w, ctx, args...)
+				}
+			}
+		}
 	}
 
-	// Add the module to the current context
-	ctx.SetVariable(n.module, module)
+	// Register the module in the context
+	ctx.context[n.module] = moduleObj
 
 	return nil
 }
@@ -981,24 +1076,27 @@ func (n *ImportNode) Line() int {
 // Implement Node interface for FromImportNode
 func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Evaluate the template name
-	templateNameVal, err := ctx.EvaluateExpression(n.template)
+	templateName, err := ctx.EvaluateExpression(n.template)
 	if err != nil {
 		return err
 	}
 
-	templateName, ok := templateNameVal.(string)
-	if !ok {
-		return fmt.Errorf("template name must be a string at line %d", n.line)
+	// Get the template name as a string
+	templateNameStr := ctx.ToString(templateName)
+
+	// Check if we have an engine to load the imported template
+	if ctx.engine == nil {
+		return fmt.Errorf("cannot import without an engine")
 	}
 
-	// Load the template
-	template, err := ctx.engine.Load(templateName)
+	// Load the imported template
+	importedTemplate, err := ctx.engine.Load(templateNameStr)
 	if err != nil {
 		return err
 	}
 
-	// Create a new context for executing the template
-	importContext := &RenderContext{
+	// Create a context for the imported template
+	importCtx := &RenderContext{
 		env:     ctx.env,
 		context: make(map[string]interface{}),
 		blocks:  make(map[string][]Node),
@@ -1006,28 +1104,32 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 		engine:  ctx.engine,
 	}
 
-	// Execute the template without output to collect macros
-	var nullWriter NullWriter
-	if err := template.nodes.Render(&nullWriter, importContext); err != nil {
+	// Render the imported template to a null writer to collect macros
+	err = importedTemplate.nodes.Render(&NullWriter{}, importCtx)
+	if err != nil {
 		return err
 	}
 
-	// Import the specified macros into the current context
-	if ctx.macros == nil {
-		ctx.macros = make(map[string]Node)
-	}
-
-	// Add the directly imported macros
-	for _, macroName := range n.macros {
-		if macro, ok := importContext.macros[macroName]; ok {
-			ctx.macros[macroName] = macro
+	// Import the requested macros
+	for _, name := range n.macros {
+		// Check if we need to use an alias
+		alias := name
+		if n.aliases != nil {
+			if a, ok := n.aliases[name]; ok {
+				alias = a
+			}
 		}
-	}
 
-	// Add the aliased macros
-	for macroName, alias := range n.aliases {
-		if macro, ok := importContext.macros[macroName]; ok {
-			ctx.macros[alias] = macro
+		// Get the macro from the imported template
+		if macro, ok := importCtx.macros[name]; ok {
+			if macroNode, ok := macro.(*MacroNode); ok {
+				// Create a wrapper function that captures the macro node
+				ctx.context[alias] = func(args ...interface{}) func(io.Writer) error {
+					return func(w io.Writer) error {
+						return macroNode.CallMacro(w, ctx, args...)
+					}
+				}
+			}
 		}
 	}
 
@@ -1040,46 +1142,4 @@ func (n *FromImportNode) Type() NodeType {
 
 func (n *FromImportNode) Line() int {
 	return n.line
-}
-
-// NewFunctionNode creates a new function call node
-func NewFunctionNode(name string, args []Node, line int) *FunctionNode {
-	return &FunctionNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprFunction,
-			line:     line,
-		},
-		name: name,
-		args: args,
-	}
-}
-
-// NewMacroNode creates a new macro node
-func NewMacroNode(name string, params []string, defaults map[string]Node, body []Node, line int) *MacroNode {
-	return &MacroNode{
-		name:     name,
-		params:   params,
-		defaults: defaults,
-		body:     body,
-		line:     line,
-	}
-}
-
-// NewImportNode creates a new import node
-func NewImportNode(templateExpr Node, alias string, line int) *ImportNode {
-	return &ImportNode{
-		template: templateExpr,
-		module:   alias,
-		line:     line,
-	}
-}
-
-// NewFromImportNode creates a new from import node
-func NewFromImportNode(templateExpr Node, macros []string, aliases map[string]string, line int) *FromImportNode {
-	return &FromImportNode{
-		template: templateExpr,
-		macros:   macros,
-		aliases:  aliases,
-		line:     line,
-	}
 }

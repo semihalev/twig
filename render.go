@@ -23,6 +23,7 @@ type RenderContext struct {
 	extending    bool       // Whether this template extends another
 	currentBlock *BlockNode // Current block being rendered (for parent() function)
 	inScriptTag  bool       // Whether we're currently inside a script tag
+	inStyleTag   bool       // Whether we're currently inside a style tag
 }
 
 // renderContextPool is a sync.Pool for RenderContext objects
@@ -56,7 +57,8 @@ func NewRenderContext(env *Environment, context map[string]interface{}, engine *
 	ctx.extending = false
 	ctx.currentBlock = nil
 	ctx.parent = nil
-	// We're now using a content-based approach instead of tracking script tag boundaries
+	ctx.inScriptTag = false
+	ctx.inStyleTag = false
 
 	// Copy the context values
 	if context != nil {
@@ -143,7 +145,7 @@ func (ctx *RenderContext) CallMacro(w io.Writer, name string, args []interface{}
 	}
 
 	// Call the macro
-	return macroNode.Call(w, ctx, args)
+	return macroNode.CallMacro(w, ctx, args...)
 }
 
 // CallFunction calls a function with the given arguments
@@ -175,7 +177,7 @@ func (ctx *RenderContext) CallFunction(name string, args []interface{}) (interfa
 			if !ok {
 				return fmt.Errorf("'%s' is not a macro", name)
 			}
-			return macroNode.Call(w, ctx, args)
+			return macroNode.CallMacro(w, ctx, args...)
 		}, nil
 	}
 
@@ -440,7 +442,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 				if !ok {
 					return fmt.Errorf("'%s' is not a macro", n.name)
 				}
-				return macroNode.Call(w, ctx, args)
+				return macroNode.CallMacro(w, ctx, args...)
 			}, nil
 		}
 

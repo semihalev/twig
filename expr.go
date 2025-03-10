@@ -314,6 +314,18 @@ func (n *ArrayNode) Render(w io.Writer, ctx *RenderContext) error {
 	return err
 }
 
+// Render implementation for FunctionNode
+func (n *FunctionNode) Render(w io.Writer, ctx *RenderContext) error {
+	result, err := ctx.EvaluateExpression(n)
+	if err != nil {
+		return err
+	}
+
+	str := ctx.ToString(result)
+	_, err = w.Write([]byte(str))
+	return err
+}
+
 // NewFilterNode creates a new filter node
 func NewFilterNode(node Node, filter string, args []Node, line int) *FilterNode {
 	return &FilterNode{
@@ -373,5 +385,17 @@ func NewArrayNode(items []Node, line int) *ArrayNode {
 			line:     line,
 		},
 		items: items,
+	}
+}
+
+// NewFunctionNode creates a new function call node
+func NewFunctionNode(name string, args []Node, line int) *FunctionNode {
+	return &FunctionNode{
+		ExpressionNode: ExpressionNode{
+			exprType: ExprFunction,
+			line:     line,
+		},
+		name: name,
+		args: args,
 	}
 }
