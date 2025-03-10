@@ -33,10 +33,10 @@ const (
 type Node interface {
 	// Render renders the node to the given writer
 	Render(w io.Writer, ctx *RenderContext) error
-	
+
 	// Type returns the type of the node
 	Type() NodeType
-	
+
 	// Line returns the line number where the node was defined
 	Line() int
 }
@@ -79,7 +79,7 @@ func (n *MacroNode) Call(w io.Writer, ctx *RenderContext, args []interface{}) er
 		parent:  ctx.parent,
 		engine:  ctx.engine,
 	}
-	
+
 	// Set parameter values from arguments
 	for i, param := range n.params {
 		if i < len(args) {
@@ -97,14 +97,14 @@ func (n *MacroNode) Call(w io.Writer, ctx *RenderContext, args []interface{}) er
 			macroContext.context[param] = nil
 		}
 	}
-	
+
 	// Render the macro body
 	for _, node := range n.body {
 		if err := node.Render(w, macroContext); err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
@@ -122,7 +122,7 @@ func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Create a context for the imported template
 	importContext := &RenderContext{
 		env:     ctx.env,
@@ -131,24 +131,24 @@ func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
 		macros:  make(map[string]Node),
 		engine:  ctx.engine,
 	}
-	
+
 	// Render the template to collect macros (without output)
 	var nullWriter NullWriter
 	if err := template.nodes.Render(&nullWriter, importContext); err != nil {
 		return err
 	}
-	
+
 	// Create a module object to hold the imported macros
 	module := make(map[string]interface{})
-	
+
 	// Add all macros from the imported template to the module
 	for name, macro := range importContext.macros {
 		module[name] = macro
 	}
-	
+
 	// Set the module in the current context
 	ctx.SetVariable(n.module, module)
-	
+
 	return nil
 }
 
@@ -175,7 +175,7 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Create a context for the imported template
 	importContext := &RenderContext{
 		env:     ctx.env,
@@ -184,13 +184,13 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 		macros:  make(map[string]Node),
 		engine:  ctx.engine,
 	}
-	
+
 	// Render the template to collect macros (without output)
 	var nullWriter NullWriter
 	if err := template.nodes.Render(&nullWriter, importContext); err != nil {
 		return err
 	}
-	
+
 	// Import the specified macros directly into the current context
 	if len(n.macros) > 0 {
 		for _, name := range n.macros {
@@ -199,7 +199,7 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 			}
 		}
 	}
-	
+
 	// Import macros with aliases
 	if len(n.aliases) > 0 {
 		for name, alias := range n.aliases {
@@ -208,7 +208,7 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -235,7 +235,7 @@ func (n *FilterNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Evaluate filter arguments
 	var args []interface{}
 	for _, arg := range n.args {
@@ -245,13 +245,13 @@ func (n *FilterNode) Render(w io.Writer, ctx *RenderContext) error {
 		}
 		args = append(args, argValue)
 	}
-	
+
 	// Apply the filter
 	result, err := ctx.ApplyFilter(n.filter, input, args)
 	if err != nil {
 		return err
 	}
-	
+
 	// Write the result
 	_, err = w.Write([]byte(ctx.ToString(result)))
 	return err

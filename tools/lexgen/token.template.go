@@ -19,7 +19,7 @@ const (
 	T_NUMBER
 	T_OPERATOR
 	T_PUNCTUATION
-	
+
 	// Special keywords
 	T_MACRO
 	T_ENDMACRO

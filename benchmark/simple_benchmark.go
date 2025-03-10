@@ -201,7 +201,7 @@ func main() {
 	fmt.Printf("  Condition templates: %.2fx\n", float64(twigConditionTime.Nanoseconds())/float64(goConditionTime.Nanoseconds()))
 	fmt.Printf("  Loop templates: %.2fx\n", float64(twigLoopTime.Nanoseconds())/float64(goLoopTime.Nanoseconds()))
 	fmt.Println("\n(Values greater than 1.0 mean Twig is slower than Go by that factor)")
-	
+
 	fmt.Println("\n==================================================")
 	fmt.Println("Benchmark complete!")
 	fmt.Println("==================================================")
