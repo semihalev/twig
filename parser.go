@@ -9,18 +9,24 @@ import (
 // Token types
 const (
 	TOKEN_TEXT = iota
-	TOKEN_VAR_START
-	TOKEN_VAR_END
-	TOKEN_BLOCK_START
-	TOKEN_BLOCK_END
-	TOKEN_COMMENT_START
-	TOKEN_COMMENT_END
+	TOKEN_VAR_START      // {{
+	TOKEN_VAR_END        // }}
+	TOKEN_BLOCK_START    // {%
+	TOKEN_BLOCK_END      // %}
+	TOKEN_COMMENT_START  // {#
+	TOKEN_COMMENT_END    // #}
 	TOKEN_NAME
 	TOKEN_NUMBER
 	TOKEN_STRING
 	TOKEN_OPERATOR
 	TOKEN_PUNCTUATION
 	TOKEN_EOF
+	
+	// Whitespace control token types
+	TOKEN_VAR_START_TRIM    // {{-
+	TOKEN_VAR_END_TRIM      // -}}
+	TOKEN_BLOCK_START_TRIM  // {%-
+	TOKEN_BLOCK_END_TRIM    // -%}
 )
 
 // Parser handles parsing Twig templates into node trees
@@ -68,6 +74,11 @@ func (p *Parser) Parse(source string) (Node, error) {
 	}
 	*/
 
+	// Apply whitespace control processing to the tokens to handle
+	// the whitespace trimming between template elements
+	p.tokens = processWhitespaceControl(p.tokens)
+	
+	
 	// Parse tokens into nodes
 	nodes, err := p.parseOuterTemplate()
 	if err != nil {
@@ -80,24 +91,26 @@ func (p *Parser) Parse(source string) (Node, error) {
 // Initialize block handlers for different tag types
 func (p *Parser) initBlockHandlers() {
 	p.blockHandlers = map[string]blockHandlerFunc{
-		"if":      p.parseIf,
-		"for":     p.parseFor,
-		"block":   p.parseBlock,
-		"extends": p.parseExtends,
-		"include": p.parseInclude,
-		"set":     p.parseSet,
-		"do":      p.parseDo,
-		"macro":   p.parseMacro,
-		"import":  p.parseImport,
-		"from":    p.parseFrom,
+		"if":        p.parseIf,
+		"for":       p.parseFor,
+		"block":     p.parseBlock,
+		"extends":   p.parseExtends,
+		"include":   p.parseInclude,
+		"set":       p.parseSet,
+		"do":        p.parseDo,
+		"macro":     p.parseMacro,
+		"import":    p.parseImport,
+		"from":      p.parseFrom,
+		"spaceless": p.parseSpaceless,
 
 		// Special closing tags - they will be handled in their corresponding open tag parsers
-		"endif":    p.parseEndTag,
-		"endfor":   p.parseEndTag,
-		"endmacro": p.parseEndTag,
-		"endblock": p.parseEndTag,
-		"else":     p.parseEndTag,
-		"elseif":   p.parseEndTag,
+		"endif":        p.parseEndTag,
+		"endfor":       p.parseEndTag,
+		"endmacro":     p.parseEndTag,
+		"endblock":     p.parseEndTag,
+		"endspaceless": p.parseEndTag,
+		"else":         p.parseEndTag,
+		"elseif":       p.parseEndTag,
 	}
 }
 
@@ -106,8 +119,19 @@ func (p *Parser) tokenize() ([]Token, error) {
 	var tokens []Token
 
 	for p.cursor < len(p.source) {
-		// Check for variable syntax {{ }}
-		if p.matchString("{{") {
+		// Check for variable syntax with whitespace control {{ }} or {{- -}}
+		if p.matchString("{{-") {
+			tokens = append(tokens, Token{Type: TOKEN_VAR_START_TRIM, Line: p.line})
+			p.cursor += 3
+			// Skip whitespace after opening braces
+			for p.cursor < len(p.source) && isWhitespace(p.current()) {
+				if p.current() == '\n' {
+					p.line++
+				}
+				p.cursor++
+			}
+			continue
+		} else if p.matchString("{{") {
 			tokens = append(tokens, Token{Type: TOKEN_VAR_START, Line: p.line})
 			p.cursor += 2
 			// Skip whitespace after opening braces
@@ -120,14 +144,29 @@ func (p *Parser) tokenize() ([]Token, error) {
 			continue
 		}
 
-		if p.matchString("}}") {
+		if p.matchString("-}}") {
+			tokens = append(tokens, Token{Type: TOKEN_VAR_END_TRIM, Line: p.line})
+			p.cursor += 3
+			continue
+		} else if p.matchString("}}") {
 			tokens = append(tokens, Token{Type: TOKEN_VAR_END, Line: p.line})
 			p.cursor += 2
 			continue
 		}
 
-		// Check for block syntax {% %}
-		if p.matchString("{%") {
+		// Check for block syntax with whitespace control {% %} or {%- -%}
+		if p.matchString("{%-") {
+			tokens = append(tokens, Token{Type: TOKEN_BLOCK_START_TRIM, Line: p.line})
+			p.cursor += 3
+			// Skip whitespace after opening braces
+			for p.cursor < len(p.source) && isWhitespace(p.current()) {
+				if p.current() == '\n' {
+					p.line++
+				}
+				p.cursor++
+			}
+			continue
+		} else if p.matchString("{%") {
 			tokens = append(tokens, Token{Type: TOKEN_BLOCK_START, Line: p.line})
 			p.cursor += 2
 			// Skip whitespace after opening braces
@@ -140,7 +179,11 @@ func (p *Parser) tokenize() ([]Token, error) {
 			continue
 		}
 
-		if p.matchString("%}") {
+		if p.matchString("-%}") {
+			tokens = append(tokens, Token{Type: TOKEN_BLOCK_END_TRIM, Line: p.line})
+			p.cursor += 3
+			continue
+		} else if p.matchString("%}") {
 			tokens = append(tokens, Token{Type: TOKEN_BLOCK_END, Line: p.line})
 			p.cursor += 2
 			continue
@@ -268,8 +311,10 @@ func (p *Parser) tokenize() ([]Token, error) {
 		// Handle plain text
 		start := p.cursor
 		for p.cursor < len(p.source) &&
-			!p.matchString("{{") && !p.matchString("}}") &&
-			!p.matchString("{%") && !p.matchString("%}") &&
+			!p.matchString("{{-") && !p.matchString("{{") && 
+			!p.matchString("-}}") && !p.matchString("}}") &&
+			!p.matchString("{%-") && !p.matchString("{%") && 
+			!p.matchString("-%}") && !p.matchString("%}") &&
 			!p.matchString("{#") && !p.matchString("#}") {
 			if p.current() == '\n' {
 				p.line++
@@ -293,6 +338,16 @@ func (p *Parser) current() byte {
 		return 0
 	}
 	return p.source[p.cursor]
+}
+
+// Helper function to check if a token is any kind of block end token (regular or trim variant)
+func isBlockEndToken(tokenType int) bool {
+	return tokenType == TOKEN_BLOCK_END || tokenType == TOKEN_BLOCK_END_TRIM
+}
+
+// Helper function to check if a token is any kind of variable end token (regular or trim variant)
+func isVarEndToken(tokenType int) bool {
+	return tokenType == TOKEN_VAR_END || tokenType == TOKEN_VAR_END_TRIM
 }
 
 func (p *Parser) matchString(s string) bool {
@@ -400,7 +455,8 @@ func (p *Parser) parseOuterTemplate() ([]Node, error) {
 			nodes = append(nodes, NewTextNode(token.Value, token.Line))
 			p.tokenIndex++
 
-		case TOKEN_VAR_START:
+		case TOKEN_VAR_START, TOKEN_VAR_START_TRIM:
+			// Handle both normal and whitespace trimming var start tokens
 			p.tokenIndex++
 			expr, err := p.parseExpression()
 			if err != nil {
@@ -409,12 +465,14 @@ func (p *Parser) parseOuterTemplate() ([]Node, error) {
 
 			nodes = append(nodes, NewPrintNode(expr, token.Line))
 
-			if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != TOKEN_VAR_END {
-				return nil, fmt.Errorf("expected }} at line %d", token.Line)
+			// Check for either normal or whitespace trimming var end tokens
+			if p.tokenIndex >= len(p.tokens) || !isVarEndToken(p.tokens[p.tokenIndex].Type) {
+				return nil, fmt.Errorf("expected }} or -}} at line %d", token.Line)
 			}
 			p.tokenIndex++
 
-		case TOKEN_BLOCK_START:
+		case TOKEN_BLOCK_START, TOKEN_BLOCK_START_TRIM:
+			// Handle both normal and whitespace trimming block start tokens
 			p.tokenIndex++
 
 			if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != TOKEN_NAME {
@@ -426,7 +484,8 @@ func (p *Parser) parseOuterTemplate() ([]Node, error) {
 
 			// Check if this is a control ending tag (endif, endfor, endblock, etc.)
 			if blockName == "endif" || blockName == "endfor" || blockName == "endblock" ||
-				blockName == "endmacro" || blockName == "else" || blockName == "elseif" {
+				blockName == "endmacro" || blockName == "else" || blockName == "elseif" ||
+				blockName == "endspaceless" {
 				// We should return to the parent parser that's handling the parent block
 				// First move back two steps to the start of the block tag
 				p.tokenIndex -= 2
@@ -462,11 +521,44 @@ func (p *Parser) parseOuterTemplate() ([]Node, error) {
 
 			p.tokenIndex++
 
+		// Add special handling for trim token types
+		case TOKEN_VAR_END_TRIM, TOKEN_BLOCK_END_TRIM:
+			// These should have been handled with their corresponding start tokens
+			return nil, fmt.Errorf("unexpected token %v at line %d", token.Type, token.Line)
+
 		// Add special handling for TOKEN_NAME outside of a tag
 		case TOKEN_NAME, TOKEN_PUNCTUATION, TOKEN_OPERATOR, TOKEN_STRING, TOKEN_NUMBER:
 			// For raw names, punctuation, operators, and literals not inside tags, convert to text
-			nodes = append(nodes, NewTextNode(token.Value, token.Line))
-			p.tokenIndex++
+			// In many languages, the text "true" is a literal boolean, but in our parser it's just a name token
+			// outside of an expression context
+			
+			// Special handling for text content words - add spaces between consecutive text tokens
+			// This fixes issues with the spaceless tag's handling of text content
+			if token.Type == TOKEN_NAME && p.tokenIndex+1 < len(p.tokens) && 
+			   p.tokens[p.tokenIndex+1].Type == TOKEN_NAME && 
+			   p.tokens[p.tokenIndex+1].Line == token.Line {
+				// Look ahead for consecutive name tokens and join them with spaces
+				var textContent strings.Builder
+				textContent.WriteString(token.Value)
+				
+				currentLine := token.Line
+				p.tokenIndex++ // Skip the first token as we've already added it
+				
+				// Collect consecutive name tokens on the same line
+				for p.tokenIndex < len(p.tokens) && 
+					p.tokens[p.tokenIndex].Type == TOKEN_NAME &&
+					p.tokens[p.tokenIndex].Line == currentLine {
+					textContent.WriteString(" ") // Add space between words
+					textContent.WriteString(p.tokens[p.tokenIndex].Value)
+					p.tokenIndex++
+				}
+				
+				nodes = append(nodes, NewTextNode(textContent.String(), token.Line))
+			} else {
+				// Regular handling for single text tokens
+				nodes = append(nodes, NewTextNode(token.Value, token.Line))
+				p.tokenIndex++
+			}
 
 		default:
 			return nil, fmt.Errorf("unexpected token %v at line %d", token.Type, token.Line)
@@ -598,6 +690,15 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 		// Store the variable name for function calls
 		varName := token.Value
 		varLine := token.Line
+		
+		// Special handling for boolean literals and null
+		if varName == "true" {
+			return NewLiteralNode(true, varLine), nil
+		} else if varName == "false" {
+			return NewLiteralNode(false, varLine), nil
+		} else if varName == "null" || varName == "nil" {
+			return NewLiteralNode(nil, varLine), nil
+		}
 
 		// Check if this is a function call (name followed by opening parenthesis)
 		if p.tokenIndex < len(p.tokens) && 
@@ -978,8 +1079,10 @@ func (p *Parser) parseIf(parser *Parser) (Node, error) {
 		return nil, err
 	}
 
-	// Expect the block end token
-	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
+	// Expect the block end token (either regular or whitespace-trimming variant)
+	if parser.tokenIndex >= len(parser.tokens) || 
+	   (parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END && 
+		parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
 		return nil, fmt.Errorf("expected block end after if condition at line %d", ifLine)
 	}
 	parser.tokenIndex++
@@ -1036,8 +1139,8 @@ func (p *Parser) parseIf(parser *Parser) (Node, error) {
 			return nil, fmt.Errorf("expected else or endif, got %s at line %d", parser.tokens[parser.tokenIndex].Value, parser.tokens[parser.tokenIndex].Line)
 		}
 
-		// Expect the final block end token
-		if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
+		// Expect the final block end token (either regular or trim variant)
+		if parser.tokenIndex >= len(parser.tokens) || !isBlockEndToken(parser.tokens[parser.tokenIndex].Type) {
 			return nil, fmt.Errorf("expected block end after endif at line %d", parser.tokens[parser.tokenIndex-1].Line)
 		}
 		parser.tokenIndex++
@@ -1104,8 +1207,8 @@ func (p *Parser) parseFor(parser *Parser) (Node, error) {
 		return nil, err
 	}
 
-	// Expect the block end token
-	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
+	// Expect the block end token (either regular or trim variant)
+	if parser.tokenIndex >= len(parser.tokens) || !isBlockEndToken(parser.tokens[parser.tokenIndex].Type) {
 		return nil, fmt.Errorf("expected block end after for statement at line %d", forLine)
 	}
 	parser.tokenIndex++
@@ -1665,4 +1768,48 @@ func (p *Parser) parseEndTag(parser *Parser) (Node, error) {
 	tagName := parser.tokens[parser.tokenIndex-1].Value
 
 	return nil, fmt.Errorf("unexpected '%s' tag at line %d", tagName, tagLine)
+}
+
+// parseSpaceless parses a spaceless block
+func (p *Parser) parseSpaceless(parser *Parser) (Node, error) {
+	// Get the line number of the spaceless token
+	spacelessLine := parser.tokens[parser.tokenIndex-2].Line
+	
+	// Expect the block end token
+	if parser.tokenIndex >= len(parser.tokens) || 
+	   (parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END && 
+	    parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
+		return nil, fmt.Errorf("expected block end token after spaceless at line %d", spacelessLine)
+	}
+	parser.tokenIndex++
+	
+	// Parse the spaceless body
+	spacelessBody, err := parser.parseOuterTemplate()
+	if err != nil {
+		return nil, err
+	}
+	
+	// Expect endspaceless tag
+	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_START {
+		return nil, fmt.Errorf("expected endspaceless tag at line %d", spacelessLine)
+	}
+	parser.tokenIndex++
+	
+	// Expect the endspaceless token
+	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_NAME || 
+	   parser.tokens[parser.tokenIndex].Value != "endspaceless" {
+		return nil, fmt.Errorf("expected endspaceless token at line %d", parser.tokens[parser.tokenIndex].Line)
+	}
+	parser.tokenIndex++
+	
+	// Expect the block end token
+	if parser.tokenIndex >= len(parser.tokens) || 
+	   (parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END && 
+	    parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
+		return nil, fmt.Errorf("expected block end token after endspaceless at line %d", parser.tokens[parser.tokenIndex].Line)
+	}
+	parser.tokenIndex++
+	
+	// Create and return the spaceless node
+	return NewSpacelessNode(spacelessBody, spacelessLine), nil
 }

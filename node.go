@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 )
 
 // Node represents a node in the template parse tree
@@ -39,6 +40,7 @@ const (
 	NodeVerbatim
 	NodeElement
 	NodeFunction
+	NodeSpaceless
 )
 
 // RootNode represents the root of a template
@@ -51,6 +53,13 @@ type RootNode struct {
 type TextNode struct {
 	content string
 	line    int
+}
+
+// String implementation for debugging
+func (n *TextNode) String() string {
+	// Display spaces as visible characters for easier debugging
+	spacesVisual := strings.ReplaceAll(n.content, " ", "·")
+	return fmt.Sprintf("TextNode(%q [%s], line: %d)", n.content, spacesVisual, n.line)
 }
 
 // PrintNode represents a {{ expression }} node

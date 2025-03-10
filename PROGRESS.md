@@ -58,17 +58,26 @@
    - Improved performance for templates with multiple filters applied to the same value
    - Added tests and benchmarks to verify correctness and performance gains
 
+## Recent Improvements
+
+1. **Whitespace Control Features**
+   - Added support for whitespace control modifiers (`{{-`, `-}}`, `{%-`, `-%}`)
+   - Implemented the `{% spaceless %}` tag to remove whitespace between HTML tags
+   - Added direct tokenizer support for whitespace control tokens
+   - Improved text handling to preserve spaces between words
+   - Added tests for all whitespace control features
+
 ## Future Improvements
 
-1. **More Tests**
+2. **More Tests**
    - Add more comprehensive tests for edge cases
    - Add more benchmarks for different template scenarios
 
-2. **Error Handling**
+3. **Error Handling**
    - Improve error messages for filter-related issues
    - Add better debugging support
 
-3. **Template Compilation**
+4. **Template Compilation**
    - Implement a compiled template format for even faster rendering
    - Add the ability to pre-compile templates for production use
 

@@ -279,6 +279,46 @@ By default, Twig runs in production mode:
 - Auto-reload is disabled to avoid unnecessary file system checks
 - Debug mode is disabled to reduce overhead
 
+## Whitespace Handling
+
+Twig templates can have significant whitespace that affects the rendered output. This implementation supports several mechanisms for controlling whitespace:
+
+### Whitespace Control Features
+
+1. **Whitespace Control Modifiers**
+   
+   The whitespace control modifiers (`-` character) allow you to trim whitespace around tags:
+   
+   ```twig
+   <div>
+       {{- greeting -}}     {# Removes whitespace before and after #}
+   </div>
+   ```
+   
+   Using these modifiers:
+   - `{{- ... }}`: Removes whitespace before the variable output
+   - `{{ ... -}}`: Removes whitespace after the variable output
+   - `{{- ... -}}`: Removes whitespace both before and after
+   - `{%- ... %}`: Removes whitespace before the block tag
+   - `{% ... -%}`: Removes whitespace after the block tag
+   - `{%- ... -%}`: Removes whitespace both before and after
+
+2. **Spaceless Tag**
+   
+   The `spaceless` tag removes whitespace between HTML tags (but preserves whitespace within text content):
+   
+   ```twig
+   {% spaceless %}
+       <div>
+           <strong>Whitespace is removed between HTML tags</strong>
+       </div>
+   {% endspaceless %}
+   ```
+   
+   This produces: `<div><strong>Whitespace is removed between HTML tags</strong></div>`
+
+These features help you create cleaner output, especially when generating HTML with proper indentation in templates but needing compact output for production.
+
 ## Performance
 
 The library is designed with performance in mind:
@@ -286,6 +326,7 @@ The library is designed with performance in mind:
 - Efficient parsing and rendering
 - Template caching
 - Production/development mode toggle
+- Optimized filter chain processing
 
 ## License
 
