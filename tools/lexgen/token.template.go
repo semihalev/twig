@@ -19,6 +19,18 @@ const (
 	T_NUMBER
 	T_OPERATOR
 	T_PUNCTUATION
+	
+	// Special keywords
+	T_MACRO
+	T_ENDMACRO
+	T_IMPORT
+	T_FROM
+	T_AS
+	T_WITH
+	T_ONLY
+	T_IGNORE
+	T_MISSING
+	T_IN
 )
 
 // Token represents a token in the lexer
@@ -54,6 +66,26 @@ func (t Token) String() string {
 		typeName = "OPERATOR"
 	case T_PUNCTUATION:
 		typeName = "PUNCTUATION"
+	case T_MACRO:
+		typeName = "MACRO"
+	case T_ENDMACRO:
+		typeName = "ENDMACRO"
+	case T_IMPORT:
+		typeName = "IMPORT"
+	case T_FROM:
+		typeName = "FROM"
+	case T_AS:
+		typeName = "AS"
+	case T_WITH:
+		typeName = "WITH"
+	case T_ONLY:
+		typeName = "ONLY"
+	case T_IGNORE:
+		typeName = "IGNORE"
+	case T_MISSING:
+		typeName = "MISSING"
+	case T_IN:
+		typeName = "IN"
 	default:
 		typeName = fmt.Sprintf("UNKNOWN(%d)", t.Type)
 	}

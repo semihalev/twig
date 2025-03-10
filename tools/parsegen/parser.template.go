@@ -378,18 +378,232 @@ func (p *Parser) parseDo(*Parser) (Node, error) {
 
 // parseMacro parses a macro definition
 func (p *Parser) parseMacro(*Parser) (Node, error) {
-	// TODO: Implement macro parsing
-	return nil, fmt.Errorf("macro tag not implemented yet")
+	// Get the line number of the macro token
+	macroLine := p.tokens[p.tokenIndex-2].Line
+	
+	// Get the macro name
+	if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != T_IDENT {
+		return nil, fmt.Errorf("expected macro name after macro keyword at line %d", macroLine)
+	}
+	
+	macroName := p.tokens[p.tokenIndex].Value
+	p.tokenIndex++
+	
+	// Expect opening parenthesis for parameters
+	if p.tokenIndex >= len(p.tokens) || 
+	   p.tokens[p.tokenIndex].Type != T_PUNCTUATION || 
+	   p.tokens[p.tokenIndex].Value != "(" {
+		return nil, fmt.Errorf("expected '(' after macro name at line %d", macroLine)
+	}
+	p.tokenIndex++
+	
+	// Parse parameters
+	var params []string
+	defaults := make(map[string]Node)
+	
+	// If we don't have a closing parenthesis immediately, we have parameters
+	if p.tokenIndex < len(p.tokens) && 
+	   (p.tokens[p.tokenIndex].Type != T_PUNCTUATION || 
+	    p.tokens[p.tokenIndex].Value != ")") {
+		
+		for {
+			// Get parameter name
+			if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != T_IDENT {
+				return nil, fmt.Errorf("expected parameter name at line %d", macroLine)
+			}
+			
+			paramName := p.tokens[p.tokenIndex].Value
+			params = append(params, paramName)
+			p.tokenIndex++
+			
+			// Check for default value
+			if p.tokenIndex < len(p.tokens) && 
+			   p.tokens[p.tokenIndex].Type == T_OPERATOR && 
+			   p.tokens[p.tokenIndex].Value == "=" {
+				p.tokenIndex++ // Skip =
+				
+				// Parse default value expression
+				defaultExpr, err := p.parseExpression()
+				if err != nil {
+					return nil, err
+				}
+				
+				defaults[paramName] = defaultExpr
+			}
+			
+			// Check if we have more parameters
+			if p.tokenIndex < len(p.tokens) && 
+			   p.tokens[p.tokenIndex].Type == T_PUNCTUATION && 
+			   p.tokens[p.tokenIndex].Value == "," {
+				p.tokenIndex++ // Skip comma
+				continue
+			}
+			
+			break
+		}
+	}
+	
+	// Expect closing parenthesis
+	if p.tokenIndex >= len(p.tokens) || 
+	   p.tokens[p.tokenIndex].Type != T_PUNCTUATION || 
+	   p.tokens[p.tokenIndex].Value != ")" {
+		return nil, fmt.Errorf("expected ')' after macro parameters at line %d", macroLine)
+	}
+	p.tokenIndex++
+	
+	// Expect %}
+	if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != T_BLOCK_END {
+		return nil, fmt.Errorf("expected block end token after macro declaration at line %d", macroLine)
+	}
+	p.tokenIndex++
+	
+	// Parse the macro body
+	bodyNode, err := p.parseOuterTemplate()
+	if err != nil {
+		return nil, err
+	}
+	
+	// Extract body nodes
+	var bodyNodes []Node
+	if rootNode, ok := bodyNode.(*RootNode); ok {
+		bodyNodes = rootNode.Children()
+	} else {
+		bodyNodes = []Node{bodyNode}
+	}
+	
+	// Expect endmacro tag
+	if p.tokenIndex+1 >= len(p.tokens) || 
+	   p.tokens[p.tokenIndex].Type != T_BLOCK_START || 
+	   p.tokens[p.tokenIndex+1].Type != T_IDENT || 
+	   p.tokens[p.tokenIndex+1].Value != "endmacro" {
+		return nil, fmt.Errorf("missing endmacro tag for macro '%s' at line %d", 
+			macroName, macroLine)
+	}
+	
+	// Skip {% endmacro %}
+	p.tokenIndex += 2 // Skip {% endmacro
+	
+	// Expect %}
+	if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != T_BLOCK_END {
+		return nil, fmt.Errorf("expected block end token after endmacro at line %d", p.tokens[p.tokenIndex].Line)
+	}
+	p.tokenIndex++
+	
+	// Create the macro node
+	return NewMacroNode(macroName, params, defaults, bodyNodes, macroLine), nil
 }
 
 // parseImport parses an import statement
 func (p *Parser) parseImport(*Parser) (Node, error) {
-	// TODO: Implement import parsing
-	return nil, fmt.Errorf("import tag not implemented yet")
+	// Get the line number of the import token
+	importLine := p.tokens[p.tokenIndex-2].Line
+	
+	// Get the template to import
+	templateExpr, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	
+	// Expect 'as' keyword
+	if p.tokenIndex >= len(p.tokens) || 
+	   p.tokens[p.tokenIndex].Type != T_IDENT || 
+	   p.tokens[p.tokenIndex].Value != "as" {
+		return nil, fmt.Errorf("expected 'as' after template path at line %d", importLine)
+	}
+	p.tokenIndex++
+	
+	// Get the alias name
+	if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != T_IDENT {
+		return nil, fmt.Errorf("expected identifier after 'as' at line %d", importLine)
+	}
+	
+	alias := p.tokens[p.tokenIndex].Value
+	p.tokenIndex++
+	
+	// Expect %}
+	if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != T_BLOCK_END {
+		return nil, fmt.Errorf("expected block end token after import statement at line %d", importLine)
+	}
+	p.tokenIndex++
+	
+	// Create import node
+	return NewImportNode(templateExpr, alias, importLine), nil
 }
 
 // parseFrom parses a from statement
 func (p *Parser) parseFrom(*Parser) (Node, error) {
-	// TODO: Implement from parsing
-	return nil, fmt.Errorf("from tag not implemented yet")
+	// Get the line number of the from token
+	fromLine := p.tokens[p.tokenIndex-2].Line
+	
+	// Get the template to import from
+	templateExpr, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	
+	// Expect 'import' keyword
+	if p.tokenIndex >= len(p.tokens) || 
+	   p.tokens[p.tokenIndex].Type != T_IDENT || 
+	   p.tokens[p.tokenIndex].Value != "import" {
+		return nil, fmt.Errorf("expected 'import' after template path at line %d", fromLine)
+	}
+	p.tokenIndex++
+	
+	// Parse the imported items
+	var macros []string
+	aliases := make(map[string]string)
+	
+	// We need at least one macro to import
+	if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != T_IDENT {
+		return nil, fmt.Errorf("expected at least one identifier after 'import' at line %d", fromLine)
+	}
+	
+	for p.tokenIndex < len(p.tokens) && p.tokens[p.tokenIndex].Type == T_IDENT {
+		// Get macro name
+		macroName := p.tokens[p.tokenIndex].Value
+		p.tokenIndex++
+		
+		// Check for 'as' keyword for aliasing
+		if p.tokenIndex < len(p.tokens) && 
+		   p.tokens[p.tokenIndex].Type == T_IDENT && 
+		   p.tokens[p.tokenIndex].Value == "as" {
+			p.tokenIndex++ // Skip 'as'
+			
+			// Get alias name
+			if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != T_IDENT {
+				return nil, fmt.Errorf("expected identifier after 'as' at line %d", fromLine)
+			}
+			
+			aliasName := p.tokens[p.tokenIndex].Value
+			aliases[macroName] = aliasName
+			p.tokenIndex++
+		} else {
+			// No alias, just add to macros list
+			macros = append(macros, macroName)
+		}
+		
+		// Check for comma to separate items
+		if p.tokenIndex < len(p.tokens) && 
+		   p.tokens[p.tokenIndex].Type == T_PUNCTUATION && 
+		   p.tokens[p.tokenIndex].Value == "," {
+			p.tokenIndex++ // Skip comma
+			
+			// Expect another identifier after comma
+			if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != T_IDENT {
+				return nil, fmt.Errorf("expected identifier after ',' at line %d", fromLine)
+			}
+		} else {
+			// End of imports
+			break
+		}
+	}
+	
+	// Expect %}
+	if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != T_BLOCK_END {
+		return nil, fmt.Errorf("expected block end token after from import statement at line %d", fromLine)
+	}
+	p.tokenIndex++
+	
+	// Create from import node
+	return NewFromImportNode(templateExpr, macros, aliases, fromLine), nil
 }
