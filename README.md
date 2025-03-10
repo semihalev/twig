@@ -1,6 +1,36 @@
 # Twig
 
+<a href="https://goreportcard.com/report/github.com/semihalev/twig"><img src="https://goreportcard.com/badge/github.com/semihalev/twig?style=flat-square"></a>
+<a href="http://godoc.org/github.com/semihalev/twig"><img src="https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square"></a>
+<a href="https://github.com/semihalev/twig/releases"><img src="https://img.shields.io/github/v/release/semihalev/twig?style=flat-square"></a>
+<a href="https://github.com/semihalev/twig/blob/master/LICENSE"><img src="https://img.shields.io/github/license/semihalev/twig?style=flat-square"></a>
+
 Twig is a fast, memory-efficient Twig template engine implementation for Go. It aims to provide full support for the Twig template language in a Go-native way.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Basic Usage](#basic-usage)
+- [Supported Twig Syntax](#supported-twig-syntax)
+- [Filter Support](#filter-support)
+- [Custom Filter and Function Registration](#custom-filter-and-function-registration)
+- [Development Mode and Caching](#development-mode-and-caching)
+- [Debugging and Error Handling](#debugging-and-error-handling)
+- [String Escape Sequences](#string-escape-sequences)
+- [Whitespace Handling](#whitespace-handling)
+- [Performance](#performance)
+- [Examples](#examples)
+- [Template Compilation](#template-compilation)
+- [Installation Requirements](#installation-requirements)
+- [Running Tests](#running-tests)
+- [Compatibility](#compatibility)
+- [Versioning Policy](#versioning-policy)
+- [Security Considerations](#security-considerations)
+- [Contributing](#contributing)
+- [Roadmap](#roadmap)
+- [Community & Support](#community--support)
+- [License](#license)
 
 ## Features
 
@@ -426,6 +456,156 @@ Twig also uses approximately **33x less memory** than Go's standard library.
 
 See [full benchmark results](benchmark/BENCHMARK_RESULTS.md) for detailed comparison.
 
+## Examples
+
+The repository includes several example applications demonstrating various features of Twig:
+
+### Simple Example
+
+A basic example showing how to use Twig templates:
+
+```go
+// From examples/simple/main.go
+package main
+
+import (
+    "fmt"
+    "github.com/semihalev/twig"
+    "os"
+)
+
+func main() {
+    // Create a Twig engine
+    engine := twig.New()
+    
+    // Load templates from memory
+    template := "Hello, {{ name }}!"
+    engine.AddTemplateString("greeting", template)
+    
+    // Render the template
+    context := map[string]interface{}{
+        "name": "World",
+    }
+    
+    result, err := engine.Render("greeting", context)
+    if err != nil {
+        fmt.Println("Error:", err)
+        return
+    }
+    
+    fmt.Println(result) // Output: Hello, World!
+}
+```
+
+### Development Mode Example
+
+```go
+// From examples/development_mode/main.go
+package main
+
+import (
+    "fmt"
+    "github.com/semihalev/twig"
+    "os"
+)
+
+func main() {
+    // Create a Twig engine with development mode enabled
+    engine := twig.New()
+    engine.SetDevelopmentMode(true)
+    
+    // Add a template loader
+    loader := twig.NewFileSystemLoader([]string{"./templates"})
+    engine.RegisterLoader(loader)
+    
+    // Render a template
+    context := map[string]interface{}{
+        "name": "Developer",
+    }
+    
+    // Templates will auto-reload if changed
+    result, err := engine.Render("hello.twig", context)
+    if err != nil {
+        fmt.Println("Error:", err)
+        return
+    }
+    
+    fmt.Println(result)
+}
+```
+
+### Custom Extensions Example
+
+Example showing how to create custom Twig extensions:
+
+```go
+// From examples/custom_extensions/main.go
+package main
+
+import (
+    "fmt"
+    "github.com/semihalev/twig"
+    "strings"
+)
+
+func main() {
+    // Create a Twig engine
+    engine := twig.New()
+    
+    // Register a custom extension
+    engine.RegisterExtension("text_tools", func(ext *twig.CustomExtension) {
+        // Add a filter to count words
+        ext.Filters["word_count"] = func(value interface{}, args ...interface{}) (interface{}, error) {
+            str, ok := value.(string)
+            if !ok {
+                return 0, nil
+            }
+            return len(strings.Fields(str)), nil
+        }
+        
+        // Add a function to generate Lorem Ipsum text
+        ext.Functions["lorem"] = func(args ...interface{}) (interface{}, error) {
+            count := 5
+            if len(args) > 0 {
+                if c, ok := args[0].(int); ok {
+                    count = c
+                }
+            }
+            return strings.Repeat("Lorem ipsum dolor sit amet. ", count), nil
+        }
+    })
+    
+    // Use the custom extensions in a template
+    template := `
+    The following text has {{ text|word_count }} words:
+    
+    {{ text }}
+    
+    Generated text:
+    {{ lorem(3) }}
+    `
+    
+    engine.AddTemplateString("example", template)
+    
+    // Render the template
+    context := map[string]interface{}{
+        "text": "This is an example of a custom filter in action.",
+    }
+    
+    result, err := engine.Render("example", context)
+    if err != nil {
+        fmt.Println("Error:", err)
+        return
+    }
+    
+    fmt.Println(result)
+}
+```
+
+More examples can be found in the `examples/` directory:
+- `examples/compiled_templates/` - Shows how to compile and use compiled templates
+- `examples/macros/` - Demonstrates the use of macros in templates
+
 ## Template Compilation
 
 For maximum performance in production environments, Twig supports compiling templates to a binary format:
@@ -474,6 +654,74 @@ loader.LoadAll(engine)
 ```
 
 See the `examples/compiled_templates` directory for a complete example.
+
+## Installation Requirements
+
+- Go 1.18 or higher
+- No external dependencies required (all dependencies are included in Go's standard library)
+
+## Running Tests
+
+To run the test suite:
+
+```bash
+go test ./...
+```
+
+For tests with coverage report:
+
+```bash
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
+```
+
+## Compatibility
+
+This implementation aims to be compatible with Twig PHP version 3.x syntax and features. While we strive for full compatibility, there may be some minor differences due to the nature of the Go language compared to PHP.
+
+## Versioning Policy
+
+This project follows Semantic Versioning:
+- MAJOR version for incompatible API changes
+- MINOR version for backwards-compatible functionality additions
+- PATCH version for backwards-compatible bug fixes
+
+## Security Considerations
+
+When using Twig or any template engine:
+
+- Never allow untrusted users to modify or create templates directly
+- Be cautious with user-provided variables in templates
+- Consider using the HTML escaping filters (`escape` or `e`) for user-provided content
+- In sandbox mode (if implementing custom functions/filters), carefully validate inputs
+
+## Contributing
+
+Contributions are welcome! Here's how you can contribute:
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+Please make sure your code passes all tests and follows the existing code style.
+
+## Roadmap
+
+Future development plans include:
+
+- Expanded sandbox mode for enhanced security
+- Additional optimization techniques
+- More comprehensive benchmarking
+- Template profiling tools
+- Additional loader types
+
+## Community & Support
+
+- Submit bug reports and feature requests through GitHub Issues
+- Ask questions using GitHub Discussions
+- Contribute to the project by submitting Pull Requests
 
 ## License
 
