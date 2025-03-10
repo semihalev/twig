@@ -1418,38 +1418,103 @@ func (p *Parser) parseInclude(parser *Parser) (Node, error) {
 				variables = make(map[string]Node)
 			}
 
-			// Parse the variable assignments
-			for parser.tokenIndex < len(parser.tokens) &&
-				parser.tokens[parser.tokenIndex].Type == TOKEN_NAME {
+			// Check for opening brace
+			if parser.tokenIndex < len(parser.tokens) &&
+				parser.tokens[parser.tokenIndex].Type == TOKEN_PUNCTUATION &&
+				parser.tokens[parser.tokenIndex].Value == "{" {
+				parser.tokenIndex++ // Skip opening brace
 
-				// Get the variable name
-				varName := parser.tokens[parser.tokenIndex].Value
-				parser.tokenIndex++
+				// Parse key-value pairs
+				for {
+					// If we see a closing brace, we're done
+					if parser.tokenIndex < len(parser.tokens) &&
+						parser.tokens[parser.tokenIndex].Type == TOKEN_PUNCTUATION &&
+						parser.tokens[parser.tokenIndex].Value == "}" {
+						parser.tokenIndex++ // Skip closing brace
+						break
+					}
 
-				// Expect '='
-				if parser.tokenIndex >= len(parser.tokens) ||
-					parser.tokens[parser.tokenIndex].Type != TOKEN_OPERATOR ||
-					parser.tokens[parser.tokenIndex].Value != "=" {
-					return nil, fmt.Errorf("expected '=' after variable name at line %d", includeLine)
+					// Get the variable name - can be string literal or name token
+					var varName string
+					if parser.tokenIndex < len(parser.tokens) && parser.tokens[parser.tokenIndex].Type == TOKEN_STRING {
+						// It's a quoted string key
+						varName = parser.tokens[parser.tokenIndex].Value
+						parser.tokenIndex++
+					} else if parser.tokenIndex < len(parser.tokens) && parser.tokens[parser.tokenIndex].Type == TOKEN_NAME {
+						// It's an unquoted key
+						varName = parser.tokens[parser.tokenIndex].Value
+						parser.tokenIndex++
+					} else {
+						return nil, fmt.Errorf("expected variable name or string at line %d", includeLine)
+					}
+
+					// Expect colon or equals
+					if parser.tokenIndex >= len(parser.tokens) ||
+						((parser.tokens[parser.tokenIndex].Type != TOKEN_PUNCTUATION &&
+							parser.tokens[parser.tokenIndex].Value != ":") &&
+							(parser.tokens[parser.tokenIndex].Type != TOKEN_OPERATOR &&
+								parser.tokens[parser.tokenIndex].Value != "=")) {
+						return nil, fmt.Errorf("expected ':' or '=' after variable name at line %d", includeLine)
+					}
+					parser.tokenIndex++ // Skip : or =
+
+					// Parse the value expression
+					varExpr, err := parser.parseExpression()
+					if err != nil {
+						return nil, err
+					}
+
+					// Add to variables map
+					variables[varName] = varExpr
+
+					// If there's a comma, skip it
+					if parser.tokenIndex < len(parser.tokens) &&
+						parser.tokens[parser.tokenIndex].Type == TOKEN_PUNCTUATION &&
+						parser.tokens[parser.tokenIndex].Value == "," {
+						parser.tokenIndex++
+					}
+
+					// If we see whitespace, skip it
+					for parser.tokenIndex < len(parser.tokens) &&
+						parser.tokens[parser.tokenIndex].Type == TOKEN_TEXT &&
+						strings.TrimSpace(parser.tokens[parser.tokenIndex].Value) == "" {
+						parser.tokenIndex++
+					}
 				}
-				parser.tokenIndex++
+			} else {
+				// If there's no opening brace, expect name-value pairs in the old format
+				for parser.tokenIndex < len(parser.tokens) &&
+					parser.tokens[parser.tokenIndex].Type == TOKEN_NAME {
 
-				// Parse the value expression
-				varExpr, err := parser.parseExpression()
-				if err != nil {
-					return nil, err
-				}
-
-				// Add to variables map
-				variables[varName] = varExpr
-
-				// If there's a comma, skip it
-				if parser.tokenIndex < len(parser.tokens) &&
-					parser.tokens[parser.tokenIndex].Type == TOKEN_PUNCTUATION &&
-					parser.tokens[parser.tokenIndex].Value == "," {
+					// Get the variable name
+					varName := parser.tokens[parser.tokenIndex].Value
 					parser.tokenIndex++
-				} else {
-					break
+
+					// Expect '='
+					if parser.tokenIndex >= len(parser.tokens) ||
+						parser.tokens[parser.tokenIndex].Type != TOKEN_OPERATOR ||
+						parser.tokens[parser.tokenIndex].Value != "=" {
+						return nil, fmt.Errorf("expected '=' after variable name at line %d", includeLine)
+					}
+					parser.tokenIndex++
+
+					// Parse the value expression
+					varExpr, err := parser.parseExpression()
+					if err != nil {
+						return nil, err
+					}
+
+					// Add to variables map
+					variables[varName] = varExpr
+
+					// If there's a comma, skip it
+					if parser.tokenIndex < len(parser.tokens) &&
+						parser.tokens[parser.tokenIndex].Type == TOKEN_PUNCTUATION &&
+						parser.tokens[parser.tokenIndex].Value == "," {
+						parser.tokenIndex++
+					} else {
+						break
+					}
 				}
 			}
 
@@ -1473,8 +1538,13 @@ func (p *Parser) parseInclude(parser *Parser) (Node, error) {
 	}
 
 	// Expect the block end token
-	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
-		return nil, fmt.Errorf("expected block end token after include at line %d", includeLine)
+	if parser.tokenIndex >= len(parser.tokens) ||
+		(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END &&
+			parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
+		return nil, fmt.Errorf("expected block end token after include at line %d, found token type %d with value '%s'",
+			includeLine,
+			parser.tokens[parser.tokenIndex].Type,
+			parser.tokens[parser.tokenIndex].Value)
 	}
 	parser.tokenIndex++
 

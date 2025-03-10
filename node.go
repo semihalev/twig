@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -237,8 +238,70 @@ func (n *PrintNode) Render(w io.Writer, ctx *RenderContext) error {
 		return callable(w)
 	}
 
-	// Convert result to string and write
+	// Convert result to string
 	str := ctx.ToString(result)
+
+	// Special handling for default filter values to ensure proper string formatting
+	// in both JavaScript and CSS contexts
+	filter, ok := n.expression.(*FilterNode)
+	if ok && filter.filter == "default" {
+		// Check if this looks like a CSS value that shouldn't be quoted
+		isCSSValue := false
+
+		// Common CSS units that shouldn't be quoted
+		if strings.HasPrefix(str, "#") || // Colors
+			strings.HasSuffix(str, "px") || // Pixel values
+			strings.HasSuffix(str, "em") || // Em values
+			strings.HasSuffix(str, "rem") || // Root em values
+			strings.HasSuffix(str, "vh") || // Viewport height
+			strings.HasSuffix(str, "vw") || // Viewport width
+			strings.HasSuffix(str, "%") { // Percentage
+			isCSSValue = true
+		}
+
+		// Font-family values should be treated as already correctly formatted
+		// in the template where individual font names are quoted as needed
+		if !isCSSValue && strings.Contains(str, ",") &&
+			(strings.Contains(strings.ToLower(str), "serif") ||
+				strings.Contains(strings.ToLower(str), "sans") ||
+				strings.Contains(strings.ToLower(str), "monospace") ||
+				strings.Contains(strings.ToLower(str), "arial") ||
+				strings.Contains(strings.ToLower(str), "helvetica") ||
+				strings.Contains(strings.ToLower(str), "roboto") ||
+				strings.Contains(strings.ToLower(str), "font")) {
+			// Font family specifications should be treated as CSS values
+			isCSSValue = true
+		}
+
+		// Check for numeric values
+		isNumber := false
+		_, err1 := strconv.ParseInt(str, 10, 64)
+		if err1 == nil {
+			isNumber = true
+		} else {
+			_, err2 := strconv.ParseFloat(str, 64)
+			if err2 == nil {
+				isNumber = true
+			}
+		}
+
+		// If not a CSS value that should remain unquoted, apply JavaScript string quoting
+		if !isCSSValue {
+			// Skip quoting for null, undefined, numeric values, and boolean literals
+			if str != "null" && str != "undefined" && !isNumber &&
+				str != "true" && str != "false" {
+				// Check if it's already quoted
+				if !(len(str) >= 2 &&
+					((str[0] == '\'' && str[len(str)-1] == '\'') ||
+						(str[0] == '"' && str[len(str)-1] == '"'))) {
+					// Add quotes
+					str = "'" + str + "'"
+				}
+			}
+		}
+	}
+
+	// Write the result
 	_, err = w.Write([]byte(str))
 	return err
 }

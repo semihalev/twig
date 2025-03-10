@@ -2,6 +2,7 @@ package twig
 
 import (
 	"fmt"
+	"strconv"
 )
 
 // ApplyFilter applies a filter to a value
@@ -9,7 +10,13 @@ func (ctx *RenderContext) ApplyFilter(name string, value interface{}, args ...in
 	// Look for the filter in the environment
 	if ctx.env != nil {
 		if filter, ok := ctx.env.filters[name]; ok {
-			return filter(value, args...)
+			result, err := filter(value, args...)
+			if err != nil {
+				return nil, err
+			}
+
+			// We've moved the script-specific string handling to PrintNode.Render
+			return result, nil
 		}
 	}
 
@@ -93,4 +100,19 @@ func (ctx *RenderContext) evaluateFilterNode(n *FilterNode) (interface{}, error)
 
 	// Apply the entire filter chain in a single operation
 	return ctx.ApplyFilterChain(value, filterChain)
+}
+
+// Helper function to check if a string is numeric
+func isNumeric(s string) bool {
+	_, err1 := strconv.ParseInt(s, 10, 64)
+	if err1 == nil {
+		return true
+	}
+
+	_, err2 := strconv.ParseFloat(s, 64)
+	if err2 == nil {
+		return true
+	}
+
+	return false
 }

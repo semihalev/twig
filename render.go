@@ -22,6 +22,7 @@ type RenderContext struct {
 	engine       *Engine    // Reference to engine for loading templates
 	extending    bool       // Whether this template extends another
 	currentBlock *BlockNode // Current block being rendered (for parent() function)
+	inScriptTag  bool       // Whether we're currently inside a script tag
 }
 
 // renderContextPool is a sync.Pool for RenderContext objects
@@ -55,6 +56,7 @@ func NewRenderContext(env *Environment, context map[string]interface{}, engine *
 	ctx.extending = false
 	ctx.currentBlock = nil
 	ctx.parent = nil
+	// We're now using a content-based approach instead of tracking script tag boundaries
 
 	// Copy the context values
 	if context != nil {
