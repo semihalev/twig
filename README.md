@@ -227,12 +227,65 @@ engine.RegisterExtension("my_extension", func(ext *twig.CustomExtension) {
 })
 ```
 
+## Development Mode and Caching
+
+Twig provides several options to control template caching and debug behavior:
+
+```go
+// Create a new Twig engine
+engine := twig.New()
+
+// Enable development mode (enables debug, enables auto-reload, disables caching)
+engine.SetDevelopmentMode(true)
+
+// Or control individual settings
+engine.SetDebug(true)        // Enable debug mode
+engine.SetCache(false)       // Disable template caching
+engine.SetAutoReload(true)   // Enable template auto-reloading
+```
+
+### Development Mode
+
+When development mode is enabled:
+- Template caching is disabled, ensuring you always see the latest changes
+- Auto-reload is enabled, which will check for template modifications
+- Debug mode is enabled for more detailed error messages
+
+This is ideal during development to avoid having to restart your application when templates change.
+
+### Auto-Reload & Template Modification Checking
+
+The engine can automatically detect when template files change on disk and reload them:
+
+```go
+// Enable auto-reload to detect template changes
+engine.SetAutoReload(true)
+```
+
+When auto-reload is enabled:
+1. The engine tracks the last modification time of each template
+2. When a template is requested, it checks if the file has been modified
+3. If the file has changed, it automatically reloads the template
+4. If the file hasn't changed, it uses the cached version (if caching is enabled)
+
+This provides the best of both worlds:
+- Fast performance (no unnecessary file system access for unchanged templates)
+- Always up-to-date content (automatic reload when templates change)
+
+### Production Mode
+
+By default, Twig runs in production mode:
+- Template caching is enabled for maximum performance
+- Auto-reload is disabled to avoid unnecessary file system checks
+- Debug mode is disabled to reduce overhead
+
 ## Performance
 
 The library is designed with performance in mind:
 - Minimal memory allocations
 - Efficient parsing and rendering
 - Template caching
+- Production/development mode toggle
 
 ## License
 

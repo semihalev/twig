@@ -15,11 +15,21 @@ type Loader interface {
 	Exists(name string) bool
 }
 
+// TimestampAwareLoader is an interface for loaders that can check modification times
+type TimestampAwareLoader interface {
+	Loader
+	
+	// GetModifiedTime returns the last modification time of a template
+	GetModifiedTime(name string) (int64, error)
+}
+
 // FileSystemLoader loads templates from the file system
 type FileSystemLoader struct {
 	paths        []string
 	suffix       string
 	defaultPaths []string
+	// Stores paths for each loaded template to avoid repeatedly searching for the file
+	templatePaths map[string]string
 }
 
 // ArrayLoader loads templates from an in-memory array
@@ -52,11 +62,28 @@ func NewFileSystemLoader(paths []string) *FileSystemLoader {
 		paths:        normalizedPaths,
 		suffix:       ".twig",
 		defaultPaths: defaultPaths,
+		templatePaths: make(map[string]string),
 	}
 }
 
 // Load loads a template from the file system
 func (l *FileSystemLoader) Load(name string) (string, error) {
+	// Check if we already know the location of this template
+	if filePath, ok := l.templatePaths[name]; ok {
+		// Check if file still exists at this path
+		if _, err := os.Stat(filePath); err == nil {
+			// Read file content
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				return "", fmt.Errorf("error reading template %s: %w", name, err)
+			}
+			
+			return string(content), nil
+		}
+		// If file doesn't exist anymore, remove from cache and search again
+		delete(l.templatePaths, name)
+	}
+
 	// Check each path for the template
 	for _, path := range l.paths {
 		filePath := filepath.Join(path, name)
@@ -68,6 +95,9 @@ func (l *FileSystemLoader) Load(name string) (string, error) {
 		
 		// Check if file exists
 		if _, err := os.Stat(filePath); err == nil {
+			// Save the path for future lookups
+			l.templatePaths[name] = filePath
+			
 			// Read file content
 			content, err := os.ReadFile(filePath)
 			if err != nil {
@@ -104,6 +134,44 @@ func (l *FileSystemLoader) Exists(name string) bool {
 // SetSuffix sets the file suffix for templates
 func (l *FileSystemLoader) SetSuffix(suffix string) {
 	l.suffix = suffix
+}
+
+// GetModifiedTime returns the last modification time of a template file
+func (l *FileSystemLoader) GetModifiedTime(name string) (int64, error) {
+	// If we already know where this template is, check that path directly
+	if filePath, ok := l.templatePaths[name]; ok {
+		info, err := os.Stat(filePath)
+		if err != nil {
+			// If file doesn't exist anymore, remove from cache
+			if os.IsNotExist(err) {
+				delete(l.templatePaths, name)
+			}
+			return 0, err
+		}
+		
+		return info.ModTime().Unix(), nil
+	}
+	
+	// Otherwise search for the template
+	for _, path := range l.paths {
+		filePath := filepath.Join(path, name)
+		
+		// Add suffix if not already present
+		if !hasSuffix(filePath, l.suffix) {
+			filePath = filePath + l.suffix
+		}
+		
+		// Check if file exists
+		info, err := os.Stat(filePath)
+		if err == nil {
+			// Save the path for future lookups
+			l.templatePaths[name] = filePath
+			
+			return info.ModTime().Unix(), nil
+		}
+	}
+	
+	return 0, fmt.Errorf("%w: %s", ErrTemplateNotFound, name)
 }
 
 // NewArrayLoader creates a new array loader

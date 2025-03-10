@@ -2,7 +2,10 @@ package twig
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestBasicTemplate(t *testing.T) {
@@ -920,5 +923,283 @@ func TestOperators(t *testing.T) {
 				t.Fatalf("Error rendering template: %v", err)
 			}
 		})
+	}
+}
+
+func TestFilterChainOptimization(t *testing.T) {
+	// Create a Twig engine
+	engine := New()
+	
+	// Create a template with a long filter chain
+	source := "{{ 'hello world'|upper|trim|slice(0, 5)|replace('H', 'J')|upper }}"
+	
+	// Parse the template
+	parser := &Parser{}
+	node, err := parser.Parse(source)
+	if err != nil {
+		t.Fatalf("Error parsing template: %v", err)
+	}
+	
+	// Create a template
+	template := &Template{
+		source: source,
+		nodes:  node,
+		env:    engine.environment,
+		engine: engine,
+	}
+	
+	// Render the template
+	result, err := template.Render(nil)
+	if err != nil {
+		t.Fatalf("Error rendering template: %v", err)
+	}
+	
+	// Verify the expected output (should get the same result with optimized chain)
+	expected := "JELLO"
+	if result != expected {
+		t.Errorf("Filter chain optimization returned incorrect result: expected %q, got %q", expected, result)
+	}
+}
+
+func BenchmarkFilterChain(b *testing.B) {
+	// Create a Twig engine
+	engine := New()
+	
+	// Create a template with a long filter chain
+	source := "{{ 'hello world'|upper|trim|slice(0, 5)|replace('H', 'J') }}"
+	
+	// Parse the template
+	parser := &Parser{}
+	node, err := parser.Parse(source)
+	if err != nil {
+		b.Fatalf("Error parsing template: %v", err)
+	}
+	
+	// Create a template
+	template := &Template{
+		source: source,
+		nodes:  node,
+		env:    engine.environment,
+		engine: engine,
+	}
+	
+	// Bench the rendering
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := template.Render(nil)
+		if err != nil {
+			b.Fatalf("Error during benchmark: %v", err)
+		}
+	}
+}
+
+func TestTemplateModificationTime(t *testing.T) {
+	// Create a temporary directory for template files
+	tempDir := t.TempDir()
+	
+	// Create a test template file
+	templatePath := filepath.Join(tempDir, "test.twig")
+	initialContent := "Hello,{{ name }}!"
+	err := os.WriteFile(templatePath, []byte(initialContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test template: %v", err)
+	}
+	
+	// Create a Twig engine
+	engine := New()
+	
+	// Register a file system loader pointing to our temp directory
+	loader := NewFileSystemLoader([]string{tempDir})
+	engine.RegisterLoader(loader)
+	
+	// Enable auto-reload
+	engine.SetAutoReload(true)
+	
+	// First load of the template
+	template1, err := engine.Load("test")
+	if err != nil {
+		t.Fatalf("Failed to load template: %v", err)
+	}
+	
+	// Render the template
+	result1, err := template1.Render(map[string]interface{}{"name": "World"})
+	if err != nil {
+		t.Fatalf("Failed to render template: %v", err)
+	}
+	if result1 != "Hello,World!" {
+		t.Errorf("Expected 'Hello,World!', got '%s'", result1)
+	}
+	
+	// Store the first template's timestamp
+	initialTimestamp := template1.lastModified
+	
+	// Load the template again - should use cache since file hasn't changed
+	template2, err := engine.Load("test")
+	if err != nil {
+		t.Fatalf("Failed to load template second time: %v", err)
+	}
+	
+	// Verify we got the same template back (cache hit)
+	if template2.lastModified != initialTimestamp {
+		t.Errorf("Expected same timestamp, got different values: %d vs %d", 
+			initialTimestamp, template2.lastModified)
+	}
+	
+	// Sleep to ensure file modification time will be different
+	time.Sleep(1 * time.Second)
+	
+	// Modify the template file
+	modifiedContent := "Greetings,{{ name }}!"
+	err = os.WriteFile(templatePath, []byte(modifiedContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to update test template: %v", err)
+	}
+	
+	// Load the template again - should detect the change and reload
+	template3, err := engine.Load("test")
+	if err != nil {
+		t.Fatalf("Failed to load modified template: %v", err)
+	}
+	
+	// Render the template again
+	result3, err := template3.Render(map[string]interface{}{"name": "World"})
+	if err != nil {
+		t.Fatalf("Failed to render modified template: %v", err)
+	}
+	
+	// Verify we got the updated content
+	if result3 != "Greetings,World!" {
+		t.Errorf("Expected 'Greetings,World!', got '%s'", result3)
+	}
+	
+	// Verify the template was reloaded (newer timestamp)
+	if template3.lastModified <= initialTimestamp {
+		t.Errorf("Expected newer timestamp, but got %d <= %d", 
+			template3.lastModified, initialTimestamp)
+	}
+	
+	// Disable auto-reload
+	engine.SetAutoReload(false)
+	
+	// Sleep to ensure file modification time will be different
+	time.Sleep(1 * time.Second)
+	
+	// Modify the template file again
+	finalContent := "Welcome,{{ name }}!"
+	err = os.WriteFile(templatePath, []byte(finalContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to update test template again: %v", err)
+	}
+	
+	// Load the template again - should NOT detect the change because auto-reload is off
+	template4, err := engine.Load("test")
+	if err != nil {
+		t.Fatalf("Failed to load template with auto-reload off: %v", err)
+	}
+	
+	// Render the template again
+	result4, err := template4.Render(map[string]interface{}{"name": "World"})
+	if err != nil {
+		t.Fatalf("Failed to render template with auto-reload off: %v", err)
+	}
+	
+	// Verify we still have the previous content, not the updated one
+	if result4 != "Greetings,World!" {
+		t.Errorf("Expected 'Greetings,World!', got '%s'", result4)
+	}
+}
+
+func TestDevelopmentMode(t *testing.T) {
+	// Create a new engine
+	engine := New()
+	
+	// Verify default settings
+	if !engine.environment.cache {
+		t.Errorf("Cache should be enabled by default")
+	}
+	if engine.environment.debug {
+		t.Errorf("Debug should be disabled by default")
+	}
+	if engine.autoReload {
+		t.Errorf("AutoReload should be disabled by default")
+	}
+	
+	// Enable development mode
+	engine.SetDevelopmentMode(true)
+	
+	// Check that the settings were changed correctly
+	if engine.environment.cache {
+		t.Errorf("Cache should be disabled in development mode")
+	}
+	if !engine.environment.debug {
+		t.Errorf("Debug should be enabled in development mode")
+	}
+	if !engine.autoReload {
+		t.Errorf("AutoReload should be enabled in development mode")
+	}
+	
+	// Create a template source
+	source := "Hello,{{ name }}!"
+	
+	// Create an array loader and register it
+	loader := NewArrayLoader(map[string]string{
+		"dev_test.twig": source,
+	})
+	engine.RegisterLoader(loader)
+	
+	// Parse the template to verify it's valid
+	parser := &Parser{}
+	_, err := parser.Parse(source)
+	if err != nil {
+		t.Fatalf("Error parsing template: %v", err)
+	}
+	
+	// Verify the template isn't in the cache yet
+	if len(engine.templates) > 0 {
+		t.Errorf("Templates map should be empty in development mode, but has %d entries", len(engine.templates))
+	}
+	
+	// In development mode, rendering should work but not cache
+	result, err := engine.Render("dev_test.twig", map[string]interface{}{
+		"name": "World",
+	})
+	if err != nil {
+		t.Fatalf("Error rendering template in development mode: %v", err)
+	}
+	if result != "Hello,World!" {
+		t.Errorf("Expected 'Hello,World!', got '%s'", result)
+	}
+	
+	// Disable development mode
+	engine.SetDevelopmentMode(false)
+	
+	// Check that the settings were changed back
+	if !engine.environment.cache {
+		t.Errorf("Cache should be enabled when development mode is off")
+	}
+	if engine.environment.debug {
+		t.Errorf("Debug should be disabled when development mode is off")
+	}
+	if engine.autoReload {
+		t.Errorf("AutoReload should be disabled when development mode is off")
+	}
+	
+	// In production mode, rendering should cache the template
+	result, err = engine.Render("dev_test.twig", map[string]interface{}{
+		"name": "World",
+	})
+	if err != nil {
+		t.Fatalf("Error rendering template in production mode: %v", err)
+	}
+	if result != "Hello,World!" {
+		t.Errorf("Expected 'Hello,World!', got '%s'", result)
+	}
+	
+	// Template should now be in the cache
+	if len(engine.templates) != 1 {
+		t.Errorf("Templates map should have 1 entry, but has %d", len(engine.templates))
+	}
+	if _, ok := engine.templates["dev_test.twig"]; !ok {
+		t.Errorf("Template should be in the cache")
 	}
 }

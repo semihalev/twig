@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"io"
 	"sync"
+	"time"
 )
 
 // Engine represents the Twig template engine
@@ -23,11 +24,13 @@ type Engine struct {
 
 // Template represents a parsed and compiled Twig template
 type Template struct {
-	name   string
-	source string
-	nodes  Node
-	env    *Environment
-	engine *Engine       // Reference back to the engine for loading parent templates
+	name          string
+	source        string
+	nodes         Node
+	env           *Environment
+	engine        *Engine       // Reference back to the engine for loading parent templates
+	loader        Loader        // The loader that loaded this template
+	lastModified  int64         // Last modified timestamp for this template
 }
 
 // Environment holds configuration and context for template rendering
@@ -53,11 +56,14 @@ func New() *Engine {
 		tests:       make(map[string]TestFunc),
 		operators:   make(map[string]OperatorFunc),
 		autoescape: true,
+		cache:      true,  // Enable caching by default
+		debug:      false, // Disable debug mode by default
 	}
 
 	engine := &Engine{
 		templates:   make(map[string]*Template),
 		environment: env,
+		autoReload: false, // Disable auto-reload by default
 	}
 	
 	// Register the core extension by default
@@ -79,6 +85,24 @@ func (e *Engine) SetAutoReload(autoReload bool) {
 // SetStrictVars sets whether strict variable access is enabled
 func (e *Engine) SetStrictVars(strictVars bool) {
 	e.strictVars = strictVars
+}
+
+// SetDebug enables or disables debug mode
+func (e *Engine) SetDebug(enabled bool) {
+	e.environment.debug = enabled
+}
+
+// SetCache enables or disables template caching
+func (e *Engine) SetCache(enabled bool) {
+	e.environment.cache = enabled
+}
+
+// SetDevelopmentMode enables settings appropriate for development
+// This sets debug mode on, enables auto-reload, and disables caching
+func (e *Engine) SetDevelopmentMode(enabled bool) {
+	e.environment.debug = enabled
+	e.autoReload = enabled
+	e.environment.cache = !enabled
 }
 
 // Render renders a template with the given context
@@ -103,19 +127,51 @@ func (e *Engine) RenderTo(w io.Writer, name string, context map[string]interface
 
 // Load loads a template by name
 func (e *Engine) Load(name string) (*Template, error) {
-	e.mu.RLock()
-	if tmpl, ok := e.templates[name]; ok {
-		e.mu.RUnlock()
-		return tmpl, nil
+	// Only check the cache if caching is enabled
+	if e.environment.cache {
+		e.mu.RLock()
+		if tmpl, ok := e.templates[name]; ok {
+			e.mu.RUnlock()
+			
+			// If auto-reload is disabled, return the cached template
+			if !e.autoReload {
+				return tmpl, nil
+			}
+			
+			// If auto-reload is enabled, check if the template has been modified
+			if tmpl.loader != nil {
+				// Check if the loader supports timestamp checking
+				if tsLoader, ok := tmpl.loader.(TimestampAwareLoader); ok {
+					// Get the current modification time
+					currentModTime, err := tsLoader.GetModifiedTime(name)
+					if err == nil && currentModTime <= tmpl.lastModified {
+						// Template hasn't been modified, use the cached version
+						return tmpl, nil
+					}
+				}
+			}
+		} else {
+			e.mu.RUnlock()
+		}
 	}
-	e.mu.RUnlock()
 
+	// Template not in cache or cache disabled or needs reloading
+	var lastModified int64
+	var sourceLoader Loader
+	
 	for _, loader := range e.loaders {
 		source, err := loader.Load(name)
 		if err != nil {
 			continue
 		}
-
+		
+		// If this loader supports modification times, get the time
+		if tsLoader, ok := loader.(TimestampAwareLoader); ok {
+			lastModified, _ = tsLoader.GetModifiedTime(name)
+		}
+		
+		sourceLoader = loader
+		
 		parser := &Parser{}
 		nodes, err := parser.Parse(source)
 		if err != nil {
@@ -123,16 +179,21 @@ func (e *Engine) Load(name string) (*Template, error) {
 		}
 
 		template := &Template{
-			name:   name,
-			source: source,
-			nodes:  nodes,
-			env:    e.environment,
-			engine: e,  // Add reference to the engine
+			name:         name,
+			source:       source,
+			nodes:        nodes,
+			env:          e.environment,
+			engine:       e,  // Add reference to the engine
+			loader:       sourceLoader,
+			lastModified: lastModified,
 		}
 
-		e.mu.Lock()
-		e.templates[name] = template
-		e.mu.Unlock()
+		// Only cache if caching is enabled
+		if e.environment.cache {
+			e.mu.Lock()
+			e.templates[name] = template
+			e.mu.Unlock()
+		}
 
 		return template, nil
 	}
@@ -148,17 +209,26 @@ func (e *Engine) RegisterString(name string, source string) error {
 		return err
 	}
 
+	// String templates always use the current time as modification time
+	// and null loader since they're not loaded from a file
+	now := time.Now().Unix()
+
 	template := &Template{
-		name:   name,
-		source: source,
-		nodes:  nodes,
-		env:    e.environment,
-		engine: e,
+		name:         name,
+		source:       source,
+		nodes:        nodes,
+		env:          e.environment,
+		engine:       e,
+		lastModified: now,
+		loader:       nil, // String templates don't have a loader
 	}
 
-	e.mu.Lock()
-	e.templates[name] = template
-	e.mu.Unlock()
+	// Only cache if caching is enabled
+	if e.environment.cache {
+		e.mu.Lock()
+		e.templates[name] = template
+		e.mu.Unlock()
+	}
 
 	return nil
 }
@@ -168,11 +238,52 @@ func (e *Engine) GetEnvironment() *Environment {
 	return e.environment
 }
 
+// IsDebugEnabled returns true if debug mode is enabled
+func (e *Engine) IsDebugEnabled() bool {
+	return e.environment.debug
+}
+
+// IsCacheEnabled returns true if caching is enabled
+func (e *Engine) IsCacheEnabled() bool {
+	return e.environment.cache
+}
+
+// IsAutoReloadEnabled returns true if auto-reload is enabled
+func (e *Engine) IsAutoReloadEnabled() bool {
+	return e.autoReload
+}
+
+// GetCachedTemplateCount returns the number of templates in the cache
+func (e *Engine) GetCachedTemplateCount() int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return len(e.templates)
+}
+
+// GetCachedTemplateNames returns a list of template names in the cache
+func (e *Engine) GetCachedTemplateNames() []string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	names := make([]string, 0, len(e.templates))
+	for name := range e.templates {
+		names = append(names, name)
+	}
+	return names
+}
+
 // RegisterTemplate directly registers a pre-built template
 func (e *Engine) RegisterTemplate(name string, template *Template) {
-	e.mu.Lock()
-	e.templates[name] = template
-	e.mu.Unlock()
+	// Set the lastModified timestamp if it's not already set
+	if template.lastModified == 0 {
+		template.lastModified = time.Now().Unix()
+	}
+	
+	// Only cache if caching is enabled
+	if e.environment.cache {
+		e.mu.Lock()
+		e.templates[name] = template
+		e.mu.Unlock()
+	}
 }
 
 // AddFilter registers a custom filter function
@@ -272,11 +383,13 @@ func (e *Engine) RegisterExtension(name string, config func(*CustomExtension)) {
 // NewTemplate creates a new template with the given parameters
 func (e *Engine) NewTemplate(name string, source string, nodes Node) *Template {
 	return &Template{
-		name:   name,
-		source: source,
-		nodes:  nodes,
-		env:    e.environment,
-		engine: e,
+		name:         name,
+		source:       source,
+		nodes:        nodes,
+		env:          e.environment,
+		engine:       e,
+		lastModified: time.Now().Unix(),
+		loader:       nil,
 	}
 }
 
@@ -294,10 +407,12 @@ func (e *Engine) ParseTemplate(source string) (*Template, error) {
 	}
 
 	template := &Template{
-		source: source,
-		nodes:  nodes,
-		env:    e.environment,
-		engine: e,
+		source:       source,
+		nodes:        nodes,
+		env:          e.environment,
+		engine:       e,
+		lastModified: time.Now().Unix(),
+		loader:       nil,
 	}
 
 	return template, nil

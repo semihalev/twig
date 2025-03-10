@@ -1,0 +1,22 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ title }} - UPDATED</title>
+</head>
+<body>
+    <h1>Hello, {{ name }}!</h1>
+    <p>This template was modified while the application is running.</p>
+    <p>Welcome to Twig in {{ mode }} mode.</p>
+    
+    {% if items %}
+    <ul>
+        {% for item in items %}
+        <li>{{ item }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    
+    <footer>Auto-reload detected this change automatically!</footer>
+</body>
+</html>

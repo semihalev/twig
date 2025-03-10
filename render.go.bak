@@ -1,4 +1,3 @@
-// Revert to backup file and use the content with our changes
 package twig
 
 import (
@@ -407,8 +406,31 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		return ctx.CallFunction(n.name, args)
 		
 	case *FilterNode:
-		// Use the optimized filter chain implementation from render_filter.go
-		return ctx.evaluateFilterNode(n)
+		// Evaluate the base value
+		value, err := ctx.EvaluateExpression(n.node)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Evaluate filter arguments
+		args := make([]interface{}, len(n.args))
+		for i, arg := range n.args {
+			val, err := ctx.EvaluateExpression(arg)
+			if err != nil {
+				return nil, err
+			}
+			args[i] = val
+		}
+		
+		// Look for the filter in the environment
+		if ctx.env != nil {
+			if filter, ok := ctx.env.filters[n.filter]; ok {
+				// Call the filter with the value and any arguments
+				return filter(value, args...)
+			}
+		}
+		
+		return nil, fmt.Errorf("filter '%s' not found", n.filter)
 		
 	case *TestNode:
 		// Evaluate the tested value
