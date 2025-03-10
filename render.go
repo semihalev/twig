@@ -38,7 +38,7 @@ var renderContextPool = sync.Pool{
 // NewRenderContext gets a RenderContext from the pool and initializes it
 func NewRenderContext(env *Environment, context map[string]interface{}, engine *Engine) *RenderContext {
 	ctx := renderContextPool.Get().(*RenderContext)
-	
+
 	// Reset and initialize the context
 	for k := range ctx.context {
 		delete(ctx.context, k)
@@ -49,20 +49,20 @@ func NewRenderContext(env *Environment, context map[string]interface{}, engine *
 	for k := range ctx.macros {
 		delete(ctx.macros, k)
 	}
-	
+
 	ctx.env = env
 	ctx.engine = engine
 	ctx.extending = false
 	ctx.currentBlock = nil
 	ctx.parent = nil
-	
+
 	// Copy the context values
 	if context != nil {
 		for k, v := range context {
 			ctx.context[k] = v
 		}
 	}
-	
+
 	return ctx
 }
 
@@ -555,45 +555,45 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 	// Get the reflect.Value and type for the object
 	objValue := reflect.ValueOf(obj)
 	origType := objValue.Type()
-	
+
 	// Handle pointer indirection
 	isPtr := origType.Kind() == reflect.Ptr
 	if isPtr {
 		objValue = objValue.Elem()
 	}
-	
+
 	// Only use caching for struct types
 	if objValue.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("%w: cannot access attribute '%s' on %s (type %s)", 
+		return nil, fmt.Errorf("%w: cannot access attribute '%s' on %s (type %s)",
 			ErrInvalidAttribute, attr, reflect.TypeOf(obj).String(), objValue.Kind())
 	}
-	
+
 	objType := objValue.Type()
-	
+
 	// Create a cache key
 	key := attributeCacheKey{
 		typ:  objType,
 		attr: attr,
 	}
-	
+
 	// Check if we have this lookup cached
 	attributeCache.RLock()
 	entry, found := attributeCache.m[key]
 	attributeCache.RUnlock()
-	
+
 	// If not found, perform the reflection lookup and cache the result
 	if !found {
 		entry = attributeCacheEntry{
 			fieldIndex:  -1,
 			methodIndex: -1,
 		}
-		
+
 		// Look for a field
 		field, found := objType.FieldByName(attr)
 		if found {
 			entry.fieldIndex = field.Index[0] // Assuming single-level field access
 		}
-		
+
 		// Look for a method on the value
 		method, found := objType.MethodByName(attr)
 		if found && method.Type.NumIn() == 1 { // The receiver is the first argument
@@ -609,15 +609,15 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 				entry.methodIndex = method.Index
 			}
 		}
-		
+
 		// Cache the lookup result
 		attributeCache.Lock()
 		attributeCache.m[key] = entry
 		attributeCache.Unlock()
 	}
-	
+
 	// Use the cached lookup information to get the attribute
-	
+
 	// Try field access first
 	if entry.fieldIndex >= 0 {
 		field := objValue.Field(entry.fieldIndex)
@@ -625,11 +625,11 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 			return field.Interface(), nil
 		}
 	}
-	
+
 	// Try method access
 	if entry.isMethod && entry.methodIndex >= 0 {
 		var method reflect.Value
-		
+
 		if entry.ptrMethod {
 			// Need a pointer to the struct
 			if isPtr {
@@ -645,7 +645,7 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 			// Method is directly on the struct type
 			method = objValue.Method(entry.methodIndex)
 		}
-		
+
 		if method.IsValid() {
 			results := method.Call(nil)
 			if len(results) > 0 {
@@ -654,7 +654,7 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 			return nil, nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("%w: %s", ErrInvalidAttribute, attr)
 }
 

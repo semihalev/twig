@@ -89,15 +89,27 @@
    - Added detailed benchmarks showing performance improvements
    - Created comprehensive documentation of all improvements
 
+## Recent Improvements
+
+6. **String Escape Sequence Handling**
+   - Fixed string literal parsing to properly handle escape sequences
+   - Added support for escaping Twig syntax elements with `\{` and `\}` 
+   - Improved HTML attribute handling with escaped braces
+   - Fixed macro string parameter handling with special characters
+   - Added comprehensive tests for string escape sequences
+   - Updated documentation with escape sequence examples and use cases
+
 ## Future Improvements
 
 1. **More Tests**
    - Add more comprehensive tests for edge cases
    - Add more benchmarks for different template scenarios
+   - Create specific tests for complex nested expressions
 
 2. **Error Handling**
    - Improve error messages for filter-related issues
    - Add better debugging support
+   - Enhance error reporting for macro parse errors
 
 3. **Advanced Compilation**
    - Implement full AST serialization with exportable node fields

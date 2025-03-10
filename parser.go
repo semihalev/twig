@@ -211,29 +211,23 @@ func (p *Parser) tokenize() ([]Token, error) {
 		// Check for string literals
 		if p.current() == '"' || p.current() == '\'' {
 			quote := p.current()
+			startLine := p.line
 			p.cursor++
 
-			start := p.cursor
-			var inEmbeddedVar bool = false
-			for p.cursor < len(p.source) && (p.current() != quote || inEmbeddedVar) {
-				// Handle embedded Twig syntax like {{ }}
-				if p.cursor+1 < len(p.source) && p.current() == '{' && (p.source[p.cursor+1] == '{' || p.source[p.cursor+1] == '%') {
-					inEmbeddedVar = true
-				}
+			var sb strings.Builder
 
-				// Check for end of embedded variable
-				if inEmbeddedVar && p.cursor+1 < len(p.source) && p.current() == '}' && (p.source[p.cursor+1] == '}' || p.source[p.cursor+1] == '%') {
-					p.cursor += 2 // Skip the closing brackets
-					inEmbeddedVar = false
-					continue
-				}
-
-				// Skip escaped quote characters
+			for p.cursor < len(p.source) && p.current() != quote {
+				// Handle escape sequences properly
 				if p.current() == '\\' && p.cursor+1 < len(p.source) {
-					// Skip the backslash and the next character (which might be a quote)
-					p.cursor += 2
+					p.cursor++ // Skip the backslash
+					// Just collect the escaped character
+					sb.WriteByte(p.current())
+					p.cursor++
 					continue
 				}
+
+				// Just add the character
+				sb.WriteByte(p.current())
 
 				if p.current() == '\n' {
 					p.line++
@@ -242,12 +236,11 @@ func (p *Parser) tokenize() ([]Token, error) {
 			}
 
 			if p.cursor >= len(p.source) {
-				return nil, fmt.Errorf("unterminated string at line %d", p.line)
+				return nil, fmt.Errorf("unterminated string at line %d", startLine)
 			}
 
-			value := p.source[start:p.cursor]
-			tokens = append(tokens, Token{Type: TOKEN_STRING, Value: value, Line: p.line})
-			p.cursor++
+			tokens = append(tokens, Token{Type: TOKEN_STRING, Value: sb.String(), Line: startLine})
+			p.cursor++ // Skip closing quote
 			continue
 		}
 
@@ -401,6 +394,12 @@ func processEscapeSequences(s string) string {
 				result.WriteByte('"')
 			case '\'':
 				result.WriteByte('\'')
+			case '{':
+				// Special case for escaping Twig variable/block syntax
+				result.WriteByte('{')
+			case '}':
+				// Special case for escaping Twig variable/block syntax
+				result.WriteByte('}')
 			default:
 				result.WriteByte(s[i])
 			}
@@ -413,6 +412,23 @@ func processEscapeSequences(s string) string {
 
 // Replace HTML attributes like type="{{ type }}" with actual Twig variables in HTML
 func fixHTMLAttributes(input string) string {
+	// Process escaped braces
+	// For attributes, we need to preserve the backslash before the brace temporarily
+	// so that the actual twig parser doesn't interpret {{ as the start of a variable
+	// We'll transform \{ to {, etc. during final rendering
+	var result []byte
+	for i := 0; i < len(input); i++ {
+		if i < len(input)-1 && input[i] == '\\' && (input[i+1] == '{' || input[i+1] == '}') {
+			// Keep the backslash and brace - we'll handle this in the renderer
+			result = append(result, input[i], input[i+1])
+			i++ // Skip both the backslash and the character
+		} else {
+			result = append(result, input[i])
+		}
+	}
+
+	input = string(result)
+
 	// Search for patterns like: type="{{ type }}" or name="{{ name }}"
 	for i := 0; i < len(input); i++ {
 		// Find potential attribute patterns

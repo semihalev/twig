@@ -23,7 +23,7 @@ func init() {
 	gob.Register(&FromImportNode{})
 	gob.Register(&FunctionNode{})
 	gob.Register(&CommentNode{})
-	
+
 	// Expression nodes
 	gob.Register(&ExpressionNode{})
 	gob.Register(&VariableNode{})
@@ -50,12 +50,12 @@ func CompileTemplate(tmpl *Template) (*CompiledTemplate, error) {
 	// Serialize the AST (Node tree)
 	var astBuf bytes.Buffer
 	enc := gob.NewEncoder(&astBuf)
-	
+
 	// Encode the AST
 	if err := enc.Encode(tmpl.nodes); err != nil {
 		// If serialization fails, we'll still create the template but without AST
 		// and log the error with template details
-		fmt.Printf("Warning: Failed to serialize AST for template '%s': %v\n", 
+		fmt.Printf("Warning: Failed to serialize AST for template '%s': %v\n",
 			tmpl.name, err)
 	}
 
@@ -78,22 +78,22 @@ func LoadFromCompiled(compiled *CompiledTemplate, env *Environment, engine *Engi
 	}
 
 	var nodes Node
-	
+
 	// Try to use the cached AST if available
 	if len(compiled.AST) > 0 {
 		// Attempt to deserialize the AST
 		dec := gob.NewDecoder(bytes.NewReader(compiled.AST))
-		
+
 		// Try to decode the AST
 		err := dec.Decode(&nodes)
 		if err != nil {
 			// Fall back to parsing if AST deserialization fails
-			fmt.Printf("Warning: Failed to deserialize AST for template '%s', falling back to parsing: %v\n", 
+			fmt.Printf("Warning: Failed to deserialize AST for template '%s', falling back to parsing: %v\n",
 				compiled.Name, err)
 			nodes = nil
 		}
 	}
-	
+
 	// If AST deserialization failed or AST is not available, parse the source
 	if nodes == nil {
 		parser := &Parser{}

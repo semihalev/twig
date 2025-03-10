@@ -105,23 +105,23 @@ func StartTrace(templateName string) func() {
 	if !debugger.enabled {
 		return func() {}
 	}
-	
+
 	traceID := fmt.Sprintf("TRACE-%s-%d", templateName, time.Now().UnixNano())
 	start := time.Now()
-	
+
 	debugger.mu.Lock()
 	debugger.traces = append(debugger.traces, traceID)
 	debugger.mu.Unlock()
-	
+
 	LogInfo("Begin rendering template: %s", templateName)
-	
+
 	return func() {
 		elapsed := time.Since(start)
 		LogInfo("Completed rendering template: %s (took %s)", templateName, elapsed)
-		
+
 		debugger.mu.Lock()
 		defer debugger.mu.Unlock()
-		
+
 		// Remove this trace from active traces
 		for i, t := range debugger.traces {
 			if t == traceID {
@@ -137,10 +137,10 @@ func TraceSection(name string) func() {
 	if !debugger.enabled {
 		return func() {}
 	}
-	
+
 	start := time.Now()
 	LogVerbose("Begin section: %s", name)
-	
+
 	return func() {
 		elapsed := time.Since(start)
 		LogVerbose("End section: %s (took %s)", name, elapsed)
@@ -152,10 +152,10 @@ func DebugRender(w io.Writer, tmpl *Template, ctx *RenderContext) error {
 	if !debugger.enabled {
 		return tmpl.RenderTo(w, ctx.context)
 	}
-	
-	LogInfo("Rendering template %s with context containing %d variables", 
+
+	LogInfo("Rendering template %s with context containing %d variables",
 		tmpl.name, len(ctx.context))
-	
+
 	// Log context variables at verbose level
 	if debugger.level >= DebugVerbose {
 		for k, v := range ctx.context {
@@ -166,10 +166,10 @@ func DebugRender(w io.Writer, tmpl *Template, ctx *RenderContext) error {
 			LogVerbose("Context var: %s = %v (type: %s)", k, v, typeName)
 		}
 	}
-	
+
 	// Trace full template rendering
 	defer StartTrace(tmpl.name)()
-	
+
 	return tmpl.RenderTo(w, ctx.context)
 }
 
@@ -179,22 +179,22 @@ func FormatErrorContext(source string, position int, line int) string {
 	if source == "" || position < 0 {
 		return ""
 	}
-	
+
 	lines := strings.Split(source, "\n")
 	if line <= 0 || line > len(lines) {
 		return ""
 	}
-	
+
 	// Get the problematic line
 	errorLine := lines[line-1]
-	
+
 	// Calculate column position within the line
 	lineStartIdx := 0
 	for i := 0; i < line-1; i++ {
 		lineStartIdx += len(lines[i]) + 1 // +1 for the newline
 	}
 	colPosition := position - lineStartIdx
-	
+
 	// Ensure column position is valid
 	if colPosition < 0 {
 		colPosition = 0
@@ -202,13 +202,13 @@ func FormatErrorContext(source string, position int, line int) string {
 	if colPosition > len(errorLine) {
 		colPosition = len(errorLine)
 	}
-	
+
 	// Build the context output
 	context := fmt.Sprintf("Line %d: %s\n", line, errorLine)
 	if colPosition >= 0 {
 		context += strings.Repeat(" ", colPosition+8) + "^\n"
 	}
-	
+
 	return context
 }
 
@@ -227,12 +227,12 @@ func (e *EnhancedError) Error() string {
 	if e.Err == nil {
 		return "unknown error"
 	}
-	
+
 	location := ""
 	if e.Template != "" {
 		location = fmt.Sprintf("in template '%s' ", e.Template)
 	}
-	
+
 	position := ""
 	if e.Line > 0 {
 		position = fmt.Sprintf("at line %d", e.Line)
@@ -240,12 +240,12 @@ func (e *EnhancedError) Error() string {
 			position += fmt.Sprintf(", column %d", e.Column)
 		}
 	}
-	
+
 	context := ""
 	if e.SourceCtx != "" {
 		context = "\n" + e.SourceCtx
 	}
-	
+
 	return fmt.Sprintf("Error %s%s: %s%s", location, position, e.Err.Error(), context)
 }
 
@@ -259,7 +259,7 @@ func NewError(err error, tmpl string, line int, col int, source string) error {
 	if err == nil {
 		return nil
 	}
-	
+
 	e := &EnhancedError{
 		Err:      err,
 		Template: tmpl,
@@ -267,7 +267,7 @@ func NewError(err error, tmpl string, line int, col int, source string) error {
 		Column:   col,
 		Source:   source,
 	}
-	
+
 	if source != "" && line > 0 {
 		position := 0
 		if col > 0 {
@@ -280,6 +280,6 @@ func NewError(err error, tmpl string, line int, col int, source string) error {
 		}
 		e.SourceCtx = FormatErrorContext(source, position, line)
 	}
-	
+
 	return e
 }

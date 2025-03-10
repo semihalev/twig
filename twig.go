@@ -93,7 +93,7 @@ func (e *Engine) SetStrictVars(strictVars bool) {
 // SetDebug enables or disables debug mode
 func (e *Engine) SetDebug(enabled bool) {
 	e.environment.debug = enabled
-	
+
 	// Set the debug level based on the debug flag
 	if enabled {
 		SetDebugLevel(DebugInfo)
@@ -118,7 +118,7 @@ func (e *Engine) SetDevelopmentMode(enabled bool) {
 // Render renders a template with the given context
 func (e *Engine) Render(name string, context map[string]interface{}) (string, error) {
 	LogInfo("Rendering template: %s", name)
-	
+
 	template, err := e.Load(name)
 	if err != nil {
 		LogError(err, fmt.Sprintf("Failed to load template: %s", name))
@@ -130,7 +130,7 @@ func (e *Engine) Render(name string, context map[string]interface{}) (string, er
 		var buf StringBuffer
 		ctx := NewRenderContext(e.environment, context, e)
 		defer ctx.Release()
-		
+
 		// Use debug rendering with enhanced error reporting
 		err = DebugRender(&buf, template, ctx)
 		if err != nil {
@@ -146,10 +146,10 @@ func (e *Engine) Render(name string, context map[string]interface{}) (string, er
 			}
 			return "", err
 		}
-		
+
 		return buf.String(), nil
 	}
-	
+
 	// Normal rendering path without debug overhead
 	return template.Render(context)
 }
@@ -157,7 +157,7 @@ func (e *Engine) Render(name string, context map[string]interface{}) (string, er
 // RenderTo renders a template to a writer
 func (e *Engine) RenderTo(w io.Writer, name string, context map[string]interface{}) error {
 	LogInfo("Rendering template to writer: %s", name)
-	
+
 	template, err := e.Load(name)
 	if err != nil {
 		LogError(err, fmt.Sprintf("Failed to load template: %s", name))
@@ -168,7 +168,7 @@ func (e *Engine) RenderTo(w io.Writer, name string, context map[string]interface
 	if e.environment.debug {
 		ctx := NewRenderContext(e.environment, context, e)
 		defer ctx.Release()
-		
+
 		// Use debug rendering with enhanced error reporting
 		err = DebugRender(w, template, ctx)
 		if err != nil {
@@ -184,10 +184,10 @@ func (e *Engine) RenderTo(w io.Writer, name string, context map[string]interface
 			}
 			return err
 		}
-		
+
 		return nil
 	}
-	
+
 	// Normal rendering path without debug overhead
 	return template.RenderTo(w, context)
 }
@@ -276,15 +276,15 @@ func (e *Engine) Load(name string) (*Template, error) {
 	if len(loaderErrors) > 0 {
 		errorDetails := strings.Builder{}
 		errorDetails.WriteString(fmt.Sprintf("Template '%s' not found. Tried %d loaders:\n", name, len(loaderErrors)))
-		
+
 		for i, err := range loaderErrors {
 			errorDetails.WriteString(fmt.Sprintf("  %d) %s\n", i+1, err.Error()))
 		}
-		
+
 		LogError(ErrTemplateNotFound, errorDetails.String())
 		return nil, fmt.Errorf("%w: %s", ErrTemplateNotFound, errorDetails.String())
 	}
-	
+
 	LogError(ErrTemplateNotFound, fmt.Sprintf("Template '%s' not found. No loaders configured.", name))
 	return nil, fmt.Errorf("%w: '%s'", ErrTemplateNotFound, name)
 }
@@ -552,7 +552,7 @@ func (t *Template) Render(context map[string]interface{}) (string, error) {
 	// Get a string buffer from the pool
 	buf := NewStringBuffer()
 	defer buf.Release()
-	
+
 	err := t.RenderTo(buf, context)
 	if err != nil {
 		return "", err
@@ -564,7 +564,7 @@ func (t *Template) Render(context map[string]interface{}) (string, error) {
 func (t *Template) RenderTo(w io.Writer, context map[string]interface{}) error {
 	// Get a render context from the pool
 	ctx := NewRenderContext(t.env, context, t.engine)
-	
+
 	// Ensure the context is returned to the pool
 	defer ctx.Release()
 

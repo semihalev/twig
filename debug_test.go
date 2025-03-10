@@ -157,19 +157,19 @@ func TestTracing(t *testing.T) {
 
 func TestErrorWithTemplateNotFound(t *testing.T) {
 	engine := New()
-	
+
 	// Attempt to load a non-existent template
 	_, err := engine.Load("non-existent")
-	
+
 	if err == nil {
 		t.Fatal("Expected error for missing template, got nil")
 	}
-	
+
 	// The error should contain template name and ErrTemplateNotFound
 	if !strings.Contains(err.Error(), "non-existent") {
 		t.Errorf("Error should contain template name, but got: %s", err.Error())
 	}
-	
+
 	// Check that it wraps ErrTemplateNotFound
 	if !errors.Is(err, ErrTemplateNotFound) {
 		t.Errorf("Error should wrap ErrTemplateNotFound, but got: %T: %v", err, err)
@@ -178,14 +178,14 @@ func TestErrorWithTemplateNotFound(t *testing.T) {
 
 func TestErrorWithInvalidSyntax(t *testing.T) {
 	engine := New()
-	
+
 	// Register a template with invalid syntax
 	err := engine.RegisterString("invalid", "{{ unclosed tag")
-	
+
 	if err == nil {
 		t.Fatal("Expected error for invalid syntax, got nil")
 	}
-	
+
 	// Error should contain information about the syntax error
 	if !strings.Contains(err.Error(), "parsing error") {
 		t.Errorf("Error should mention parsing error, but got: %s", err.Error())
@@ -200,39 +200,39 @@ func TestDebugRender(t *testing.T) {
 		debugger.level = origLevel
 		debugger.writer = origWriter
 	}()
-	
+
 	// Set up debug logging
 	var logBuf bytes.Buffer
 	SetDebugWriter(&logBuf)
 	SetDebugLevel(DebugInfo)
-	
+
 	// Create a template and engine
 	engine := New()
 	// Make sure to add a space in the output to match what the default Twig rendering would do
 	engine.RegisterString("debug-template", "Hello {{ name }}!")
-	
+
 	// Get the template
 	tmpl, err := engine.Load("debug-template")
 	if err != nil {
 		t.Fatalf("Failed to load template: %v", err)
 	}
-	
+
 	// Render with debugging
 	var outBuf bytes.Buffer
 	ctx := NewRenderContext(engine.environment, map[string]interface{}{"name": "World"}, engine)
 	defer ctx.Release()
-	
+
 	err = DebugRender(&outBuf, tmpl, ctx)
 	if err != nil {
 		t.Fatalf("DebugRender failed: %v", err)
 	}
-	
+
 	// Check output - only check that it contains the expected parts
 	output := outBuf.String()
 	if !strings.Contains(output, "Hello") || !strings.Contains(output, "World") {
 		t.Errorf("Expected output to contain 'Hello' and 'World', got '%s'", output)
 	}
-	
+
 	// Check log output
 	logOutput := logBuf.String()
 	if !strings.Contains(logOutput, "Rendering template") {
