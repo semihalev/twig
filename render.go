@@ -18,9 +18,9 @@ type RenderContext struct {
 	blocks       map[string][]Node
 	macros       map[string]Node
 	parent       *RenderContext
-	engine       *Engine         // Reference to engine for loading templates
-	extending    bool            // Whether this template extends another
-	currentBlock *BlockNode      // Current block being rendered (for parent() function)
+	engine       *Engine    // Reference to engine for loading templates
+	extending    bool       // Whether this template extends another
+	currentBlock *BlockNode // Current block being rendered (for parent() function)
 }
 
 // Error types
@@ -32,26 +32,25 @@ var (
 	ErrRender           = errors.New("render error")
 )
 
-
 // GetVariable gets a variable from the context
 func (ctx *RenderContext) GetVariable(name string) (interface{}, error) {
 	// Check local context first
 	if value, ok := ctx.context[name]; ok {
 		return value, nil
 	}
-	
+
 	// Check globals
 	if ctx.env != nil {
 		if value, ok := ctx.env.globals[name]; ok {
 			return value, nil
 		}
 	}
-	
+
 	// Check parent context
 	if ctx.parent != nil {
 		return ctx.parent.GetVariable(name)
 	}
-	
+
 	// Return nil with no error for undefined variables
 	// Twig treats undefined variables as empty strings during rendering
 	return nil, nil
@@ -68,12 +67,12 @@ func (ctx *RenderContext) GetMacro(name string) (Node, bool) {
 	if macro, ok := ctx.macros[name]; ok {
 		return macro, true
 	}
-	
+
 	// Check parent context
 	if ctx.parent != nil {
 		return ctx.parent.GetMacro(name)
 	}
-	
+
 	return nil, false
 }
 
@@ -84,13 +83,13 @@ func (ctx *RenderContext) CallMacro(w io.Writer, name string, args []interface{}
 	if !ok {
 		return fmt.Errorf("macro '%s' not found", name)
 	}
-	
+
 	// Check if it's a MacroNode
 	macroNode, ok := macro.(*MacroNode)
 	if !ok {
 		return fmt.Errorf("'%s' is not a macro", name)
 	}
-	
+
 	// Call the macro
 	return macroNode.Call(w, ctx, args)
 }
@@ -103,7 +102,7 @@ func (ctx *RenderContext) CallFunction(name string, args []interface{}) (interfa
 			return fn(args...)
 		}
 	}
-	
+
 	// Check if it's a built-in function
 	switch name {
 	case "range":
@@ -115,7 +114,7 @@ func (ctx *RenderContext) CallFunction(name string, args []interface{}) (interfa
 	case "min":
 		return ctx.callMinFunction(args)
 	}
-	
+
 	// Check if it's a macro
 	if macro, ok := ctx.GetMacro(name); ok {
 		// Return a callable function
@@ -127,7 +126,7 @@ func (ctx *RenderContext) CallFunction(name string, args []interface{}) (interfa
 			return macroNode.Call(w, ctx, args)
 		}, nil
 	}
-	
+
 	return nil, fmt.Errorf("function '%s' not found", name)
 }
 
@@ -136,15 +135,15 @@ func (ctx *RenderContext) callRangeFunction(args []interface{}) (interface{}, er
 	if len(args) < 2 {
 		return nil, fmt.Errorf("range function requires at least 2 arguments")
 	}
-	
+
 	// Get the start and end values
 	start, ok1 := ctx.toNumber(args[0])
 	end, ok2 := ctx.toNumber(args[1])
-	
+
 	if !ok1 || !ok2 {
 		return nil, fmt.Errorf("range arguments must be numbers")
 	}
-	
+
 	// Get the step value (default is 1)
 	step := 1.0
 	if len(args) > 2 {
@@ -152,13 +151,13 @@ func (ctx *RenderContext) callRangeFunction(args []interface{}) (interface{}, er
 			step = s
 		}
 	}
-	
+
 	// Create the range
 	var result []int
 	for i := start; i <= end; i += step {
 		result = append(result, int(i))
 	}
-	
+
 	return result, nil
 }
 
@@ -167,10 +166,10 @@ func (ctx *RenderContext) callLengthFunction(args []interface{}) (interface{}, e
 	if len(args) != 1 {
 		return nil, fmt.Errorf("length/count function requires exactly 1 argument")
 	}
-	
+
 	val := args[0]
 	v := reflect.ValueOf(val)
-	
+
 	switch v.Kind() {
 	case reflect.String:
 		return len(v.String()), nil
@@ -188,7 +187,7 @@ func (ctx *RenderContext) callMaxFunction(args []interface{}) (interface{}, erro
 	if len(args) < 1 {
 		return nil, fmt.Errorf("max function requires at least 1 argument")
 	}
-	
+
 	// If the argument is a slice or array, find the max value in it
 	if len(args) == 1 {
 		v := reflect.ValueOf(args[0])
@@ -196,13 +195,13 @@ func (ctx *RenderContext) callMaxFunction(args []interface{}) (interface{}, erro
 			if v.Len() == 0 {
 				return nil, nil
 			}
-			
+
 			max := v.Index(0).Interface()
 			maxNum, ok := ctx.toNumber(max)
 			if !ok {
 				return max, nil
 			}
-			
+
 			for i := 1; i < v.Len(); i++ {
 				val := v.Index(i).Interface()
 				if valNum, ok := ctx.toNumber(val); ok {
@@ -212,18 +211,18 @@ func (ctx *RenderContext) callMaxFunction(args []interface{}) (interface{}, erro
 					}
 				}
 			}
-			
+
 			return max, nil
 		}
 	}
-	
+
 	// Find the max value in the arguments
 	max := args[0]
 	maxNum, ok := ctx.toNumber(max)
 	if !ok {
 		return max, nil
 	}
-	
+
 	for i := 1; i < len(args); i++ {
 		val := args[i]
 		if valNum, ok := ctx.toNumber(val); ok {
@@ -233,7 +232,7 @@ func (ctx *RenderContext) callMaxFunction(args []interface{}) (interface{}, erro
 			}
 		}
 	}
-	
+
 	return max, nil
 }
 
@@ -242,7 +241,7 @@ func (ctx *RenderContext) callMinFunction(args []interface{}) (interface{}, erro
 	if len(args) < 1 {
 		return nil, fmt.Errorf("min function requires at least 1 argument")
 	}
-	
+
 	// If the argument is a slice or array, find the min value in it
 	if len(args) == 1 {
 		v := reflect.ValueOf(args[0])
@@ -250,13 +249,13 @@ func (ctx *RenderContext) callMinFunction(args []interface{}) (interface{}, erro
 			if v.Len() == 0 {
 				return nil, nil
 			}
-			
+
 			min := v.Index(0).Interface()
 			minNum, ok := ctx.toNumber(min)
 			if !ok {
 				return min, nil
 			}
-			
+
 			for i := 1; i < v.Len(); i++ {
 				val := v.Index(i).Interface()
 				if valNum, ok := ctx.toNumber(val); ok {
@@ -266,18 +265,18 @@ func (ctx *RenderContext) callMinFunction(args []interface{}) (interface{}, erro
 					}
 				}
 			}
-			
+
 			return min, nil
 		}
 	}
-	
+
 	// Find the min value in the arguments
 	min := args[0]
 	minNum, ok := ctx.toNumber(min)
 	if !ok {
 		return min, nil
 	}
-	
+
 	for i := 1; i < len(args); i++ {
 		val := args[i]
 		if valNum, ok := ctx.toNumber(val); ok {
@@ -287,7 +286,7 @@ func (ctx *RenderContext) callMinFunction(args []interface{}) (interface{}, erro
 			}
 		}
 	}
-	
+
 	return min, nil
 }
 
@@ -296,68 +295,68 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 	switch n := node.(type) {
 	case *LiteralNode:
 		return n.value, nil
-		
+
 	case *VariableNode:
 		// Check if it's a macro first
 		if macro, ok := ctx.GetMacro(n.name); ok {
 			return macro, nil
 		}
-		
+
 		// Otherwise, look up variable
 		return ctx.GetVariable(n.name)
-		
+
 	case *GetAttrNode:
 		obj, err := ctx.EvaluateExpression(n.node)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		attrName, err := ctx.EvaluateExpression(n.attribute)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		attrStr, ok := attrName.(string)
 		if !ok {
 			return nil, fmt.Errorf("attribute name must be a string")
 		}
-		
+
 		// Check if obj is a map containing macros (from import)
 		if moduleMap, ok := obj.(map[string]interface{}); ok {
 			if macro, ok := moduleMap[attrStr]; ok {
 				return macro, nil
 			}
 		}
-		
+
 		return ctx.getAttribute(obj, attrStr)
-		
+
 	case *BinaryNode:
 		left, err := ctx.EvaluateExpression(n.left)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		right, err := ctx.EvaluateExpression(n.right)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		return ctx.evaluateBinaryOp(n.operator, left, right)
-		
+
 	case *ConditionalNode:
 		// Evaluate the condition
 		condResult, err := ctx.EvaluateExpression(n.condition)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// If condition is true, evaluate the true expression, otherwise evaluate the false expression
 		if ctx.toBool(condResult) {
 			return ctx.EvaluateExpression(n.trueExpr)
 		} else {
 			return ctx.EvaluateExpression(n.falseExpr)
 		}
-		
+
 	case *ArrayNode:
 		// Evaluate each item in the array
 		items := make([]interface{}, len(n.items))
@@ -369,7 +368,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 			items[i] = val
 		}
 		return items, nil
-		
+
 	case *FunctionNode:
 		// Check if it's a macro call
 		if macro, ok := ctx.GetMacro(n.name); ok {
@@ -382,7 +381,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 				}
 				args[i] = val
 			}
-			
+
 			// Return a callable that can be rendered later
 			return func(w io.Writer) error {
 				macroNode, ok := macro.(*MacroNode)
@@ -392,7 +391,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 				return macroNode.Call(w, ctx, args)
 			}, nil
 		}
-		
+
 		// Otherwise, it's a regular function call
 		// Evaluate arguments
 		args := make([]interface{}, len(n.args))
@@ -403,20 +402,20 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 			}
 			args[i] = val
 		}
-		
+
 		return ctx.CallFunction(n.name, args)
-		
+
 	case *FilterNode:
 		// Use the optimized filter chain implementation from render_filter.go
 		return ctx.evaluateFilterNode(n)
-		
+
 	case *TestNode:
 		// Evaluate the tested value
 		value, err := ctx.EvaluateExpression(n.node)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Evaluate test arguments
 		args := make([]interface{}, len(n.args))
 		for i, arg := range n.args {
@@ -426,7 +425,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 			}
 			args[i] = val
 		}
-		
+
 		// Look for the test in the environment
 		if ctx.env != nil {
 			if test, ok := ctx.env.tests[n.test]; ok {
@@ -434,16 +433,16 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 				return test(value, args...)
 			}
 		}
-		
+
 		return false, fmt.Errorf("test '%s' not found", n.test)
-		
+
 	case *UnaryNode:
 		// Evaluate the operand
 		operand, err := ctx.EvaluateExpression(n.node)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Apply the operator
 		switch n.operator {
 		case "not", "!":
@@ -461,7 +460,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		default:
 			return nil, fmt.Errorf("unsupported unary operator: %s", n.operator)
 		}
-		
+
 	default:
 		return nil, fmt.Errorf("unsupported expression type: %T", node)
 	}
@@ -472,7 +471,7 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 	if obj == nil {
 		return nil, fmt.Errorf("%w: cannot get attribute %s of nil", ErrInvalidAttribute, attr)
 	}
-	
+
 	// Handle maps
 	if objMap, ok := obj.(map[string]interface{}); ok {
 		if value, exists := objMap[attr]; exists {
@@ -480,15 +479,15 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 		}
 		return nil, fmt.Errorf("%w: map has no key %s", ErrInvalidAttribute, attr)
 	}
-	
+
 	// Use reflection for structs
 	objValue := reflect.ValueOf(obj)
-	
+
 	// Handle pointer indirection
 	if objValue.Kind() == reflect.Ptr {
 		objValue = objValue.Elem()
 	}
-	
+
 	// Handle structs
 	if objValue.Kind() == reflect.Struct {
 		// Try field access first
@@ -496,7 +495,7 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 		if field.IsValid() && field.CanInterface() {
 			return field.Interface(), nil
 		}
-		
+
 		// Try method access (both with and without parameters)
 		method := objValue.MethodByName(attr)
 		if method.IsValid() {
@@ -508,7 +507,7 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 				return nil, nil
 			}
 		}
-		
+
 		// Try method on pointer to struct
 		ptrValue := reflect.New(objValue.Type())
 		ptrValue.Elem().Set(objValue)
@@ -523,7 +522,7 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 			}
 		}
 	}
-	
+
 	return nil, fmt.Errorf("%w: %s", ErrInvalidAttribute, attr)
 }
 
@@ -538,28 +537,28 @@ func (ctx *RenderContext) evaluateBinaryOp(operator string, left, right interfac
 			}
 			return lStr + ctx.ToString(right), nil
 		}
-		
+
 		// Handle numeric addition
 		if lNum, lok := ctx.toNumber(left); lok {
 			if rNum, rok := ctx.toNumber(right); rok {
 				return lNum + rNum, nil
 			}
 		}
-		
+
 	case "-":
 		if lNum, lok := ctx.toNumber(left); lok {
 			if rNum, rok := ctx.toNumber(right); rok {
 				return lNum - rNum, nil
 			}
 		}
-		
+
 	case "*":
 		if lNum, lok := ctx.toNumber(left); lok {
 			if rNum, rok := ctx.toNumber(right); rok {
 				return lNum * rNum, nil
 			}
 		}
-		
+
 	case "/":
 		if lNum, lok := ctx.toNumber(left); lok {
 			if rNum, rok := ctx.toNumber(right); rok {
@@ -569,55 +568,55 @@ func (ctx *RenderContext) evaluateBinaryOp(operator string, left, right interfac
 				return lNum / rNum, nil
 			}
 		}
-		
+
 	case "==":
 		return ctx.equals(left, right), nil
-		
+
 	case "!=":
 		return !ctx.equals(left, right), nil
-		
+
 	case "<":
 		if lNum, lok := ctx.toNumber(left); lok {
 			if rNum, rok := ctx.toNumber(right); rok {
 				return lNum < rNum, nil
 			}
 		}
-		
+
 	case ">":
 		if lNum, lok := ctx.toNumber(left); lok {
 			if rNum, rok := ctx.toNumber(right); rok {
 				return lNum > rNum, nil
 			}
 		}
-		
+
 	case "<=":
 		if lNum, lok := ctx.toNumber(left); lok {
 			if rNum, rok := ctx.toNumber(right); rok {
 				return lNum <= rNum, nil
 			}
 		}
-		
+
 	case ">=":
 		if lNum, lok := ctx.toNumber(left); lok {
 			if rNum, rok := ctx.toNumber(right); rok {
 				return lNum >= rNum, nil
 			}
 		}
-		
+
 	case "and", "&&":
 		return ctx.toBool(left) && ctx.toBool(right), nil
-		
+
 	case "or", "||":
 		return ctx.toBool(left) || ctx.toBool(right), nil
-		
+
 	case "~":
 		// String concatenation
 		return ctx.ToString(left) + ctx.ToString(right), nil
-		
+
 	case "in":
 		// Check if left is in right (for arrays, slices, maps, strings)
 		return ctx.contains(right, left)
-		
+
 	case "not in":
 		// Check if left is not in right
 		contains, err := ctx.contains(right, left)
@@ -625,33 +624,33 @@ func (ctx *RenderContext) evaluateBinaryOp(operator string, left, right interfac
 			return false, err
 		}
 		return !contains, nil
-		
+
 	case "matches":
 		// Regular expression match
 		pattern := ctx.ToString(right)
 		str := ctx.ToString(left)
-		
+
 		// Compile the regex
 		regex, err := regexp.Compile(pattern)
 		if err != nil {
 			return false, fmt.Errorf("invalid regular expression: %s", err)
 		}
-		
+
 		return regex.MatchString(str), nil
-		
+
 	case "starts with":
 		// String prefix check
 		str := ctx.ToString(left)
 		prefix := ctx.ToString(right)
 		return strings.HasPrefix(str, prefix), nil
-		
+
 	case "ends with":
 		// String suffix check
 		str := ctx.ToString(left)
 		suffix := ctx.ToString(right)
 		return strings.HasSuffix(str, suffix), nil
 	}
-	
+
 	return nil, fmt.Errorf("unsupported binary operator: %s", operator)
 }
 
@@ -660,9 +659,9 @@ func (ctx *RenderContext) contains(container, item interface{}) (bool, error) {
 	if container == nil {
 		return false, nil
 	}
-	
+
 	itemStr := ctx.ToString(item)
-	
+
 	// Handle different container types
 	switch c := container.(type) {
 	case string:
@@ -699,7 +698,7 @@ func (ctx *RenderContext) contains(container, item interface{}) (bool, error) {
 			}
 		}
 	}
-	
+
 	return false, nil
 }
 
@@ -711,14 +710,14 @@ func (ctx *RenderContext) equals(a, b interface{}) bool {
 	if a == nil || b == nil {
 		return false
 	}
-	
+
 	// Try numeric comparison
 	if aNum, aok := ctx.toNumber(a); aok {
 		if bNum, bok := ctx.toNumber(b); bok {
 			return aNum == bNum
 		}
 	}
-	
+
 	// Try string comparison
 	return ctx.ToString(a) == ctx.ToString(b)
 }
@@ -728,7 +727,7 @@ func (ctx *RenderContext) toNumber(val interface{}) (float64, bool) {
 	if val == nil {
 		return 0, false
 	}
-	
+
 	switch v := val.(type) {
 	case int:
 		return float64(v), true
@@ -766,7 +765,7 @@ func (ctx *RenderContext) toNumber(val interface{}) (float64, bool) {
 		}
 		return 0, true
 	}
-	
+
 	// Try reflection for custom types
 	rv := reflect.ValueOf(val)
 	switch rv.Kind() {
@@ -777,7 +776,7 @@ func (ctx *RenderContext) toNumber(val interface{}) (float64, bool) {
 	case reflect.Float32, reflect.Float64:
 		return rv.Float(), true
 	}
-	
+
 	return 0, false
 }
 
@@ -786,7 +785,7 @@ func (ctx *RenderContext) toBool(val interface{}) bool {
 	if val == nil {
 		return false
 	}
-	
+
 	switch v := val.(type) {
 	case bool:
 		return v
@@ -803,7 +802,7 @@ func (ctx *RenderContext) toBool(val interface{}) bool {
 	case map[string]interface{}:
 		return len(v) > 0
 	}
-	
+
 	// Try reflection for other types
 	rv := reflect.ValueOf(val)
 	switch rv.Kind() {
@@ -820,7 +819,7 @@ func (ctx *RenderContext) toBool(val interface{}) bool {
 	case reflect.Array, reflect.Slice, reflect.Map:
 		return rv.Len() > 0
 	}
-	
+
 	// Default to true for other non-nil values
 	return true
 }
@@ -830,7 +829,7 @@ func (ctx *RenderContext) ToString(val interface{}) string {
 	if val == nil {
 		return ""
 	}
-	
+
 	switch v := val.(type) {
 	case string:
 		return v
@@ -853,6 +852,6 @@ func (ctx *RenderContext) ToString(val interface{}) string {
 	case fmt.Stringer:
 		return v.String()
 	}
-	
+
 	return fmt.Sprintf("%v", val)
 }

@@ -10,33 +10,33 @@ import (
 
 func TestBasicTemplate(t *testing.T) {
 	engine := New()
-	
+
 	// Let's simplify for now - just fake the parsing
 	text := "Hello, World!"
 	node := NewTextNode(text, 1)
 	root := NewRootNode([]Node{node}, 1)
-	
+
 	template := &Template{
 		name:   "simple",
 		source: text,
 		nodes:  root,
 		env:    engine.environment,
 	}
-	
+
 	engine.mu.Lock()
 	engine.templates["simple"] = template
 	engine.mu.Unlock()
-	
+
 	// Render with context
 	context := map[string]interface{}{
 		"name": "World",
 	}
-	
+
 	result, err := engine.Render("simple", context)
 	if err != nil {
 		t.Fatalf("Error rendering template: %v", err)
 	}
-	
+
 	expected := "Hello, World!"
 	if result != expected {
 		t.Errorf("Expected result to be %q, but got %q", expected, result)
@@ -45,34 +45,34 @@ func TestBasicTemplate(t *testing.T) {
 
 func TestRenderToWriter(t *testing.T) {
 	engine := New()
-	
+
 	// Let's simplify for now - just fake the parsing
 	text := "Value: 42"
 	node := NewTextNode(text, 1)
 	root := NewRootNode([]Node{node}, 1)
-	
+
 	template := &Template{
 		name:   "writer_test",
 		source: text,
 		nodes:  root,
 		env:    engine.environment,
 	}
-	
+
 	engine.mu.Lock()
 	engine.templates["writer_test"] = template
 	engine.mu.Unlock()
-	
+
 	// Render with context to a buffer
 	context := map[string]interface{}{
 		"value": 42,
 	}
-	
+
 	var buf bytes.Buffer
 	err := engine.RenderTo(&buf, "writer_test", context)
 	if err != nil {
 		t.Fatalf("Error rendering template to writer: %v", err)
 	}
-	
+
 	expected := "Value: 42"
 	if buf.String() != expected {
 		t.Errorf("Expected result to be %q, but got %q", expected, buf.String())
@@ -81,11 +81,11 @@ func TestRenderToWriter(t *testing.T) {
 
 func TestTemplateNotFound(t *testing.T) {
 	engine := New()
-	
+
 	// Create empty array loader
 	loader := NewArrayLoader(map[string]string{})
 	engine.RegisterLoader(loader)
-	
+
 	// Try to render non-existent template
 	_, err := engine.Render("nonexistent", nil)
 	if err == nil {
@@ -95,23 +95,23 @@ func TestTemplateNotFound(t *testing.T) {
 
 func TestVariableAccess(t *testing.T) {
 	engine := New()
-	
+
 	// Let's simplify for now - just fake the parsing
 	text := "Name: John, Age: 30"
 	node := NewTextNode(text, 1)
 	root := NewRootNode([]Node{node}, 1)
-	
+
 	template := &Template{
 		name:   "nested",
 		source: text,
 		nodes:  root,
 		env:    engine.environment,
 	}
-	
+
 	engine.mu.Lock()
 	engine.templates["nested"] = template
 	engine.mu.Unlock()
-	
+
 	// Render with nested context
 	context := map[string]interface{}{
 		"user": map[string]interface{}{
@@ -119,12 +119,12 @@ func TestVariableAccess(t *testing.T) {
 			"age":  30,
 		},
 	}
-	
+
 	result, err := engine.Render("nested", context)
 	if err != nil {
 		t.Fatalf("Error rendering template with nested variables: %v", err)
 	}
-	
+
 	expected := "Name: John, Age: 30"
 	if result != expected {
 		t.Errorf("Expected result to be %q, but got %q", expected, result)
@@ -133,7 +133,7 @@ func TestVariableAccess(t *testing.T) {
 
 func TestForLoop(t *testing.T) {
 	engine := New()
-	
+
 	// Create a for loop template manually
 	itemsNode := NewVariableNode("items", 1)
 	loopBody := []Node{
@@ -141,7 +141,7 @@ func TestForLoop(t *testing.T) {
 		NewVariableNode("item", 1),
 		NewTextNode("</li>", 1),
 	}
-	
+
 	forNode := &ForNode{
 		keyVar:     "",
 		valueVar:   "item",
@@ -150,57 +150,57 @@ func TestForLoop(t *testing.T) {
 		elseBranch: []Node{NewTextNode("No items", 1)},
 		line:       1,
 	}
-	
+
 	// Wrap in a simple list
 	rootNodes := []Node{
 		NewTextNode("<ul>", 1),
 		forNode,
 		NewTextNode("</ul>", 1),
 	}
-	
+
 	root := NewRootNode(rootNodes, 1)
-	
+
 	template := &Template{
 		name:   "for_test",
 		source: "{% for item in items %}<li>{{ item }}</li>{% else %}No items{% endfor %}",
 		nodes:  root,
 		env:    engine.environment,
 	}
-	
+
 	engine.mu.Lock()
 	engine.templates["for_test"] = template
 	engine.mu.Unlock()
-	
+
 	// Test with non-empty array
 	context := map[string]interface{}{
 		"items": []string{"apple", "banana", "orange"},
 	}
-	
+
 	result, err := engine.Render("for_test", context)
 	if err != nil {
 		t.Fatalf("Error rendering for template (with items): %v", err)
 	}
-	
+
 	expected := "<ul><li>apple</li><li>banana</li><li>orange</li></ul>"
 	if result != expected {
 		t.Errorf("Expected result to be %q, but got %q", expected, result)
 	}
-	
+
 	// Test with empty array
 	context = map[string]interface{}{
 		"items": []string{},
 	}
-	
+
 	result, err = engine.Render("for_test", context)
 	if err != nil {
 		t.Fatalf("Error rendering for template (empty items): %v", err)
 	}
-	
+
 	expected = "<ul>No items</ul>"
 	if result != expected {
 		t.Errorf("Expected result to be %q, but got %q", expected, result)
 	}
-	
+
 	// Test with map
 	mapItemsNode := NewVariableNode("map", 1)
 	mapLoopBody := []Node{
@@ -210,28 +210,28 @@ func TestForLoop(t *testing.T) {
 		NewVariableNode("value", 1),
 		NewTextNode("</li>", 1),
 	}
-	
+
 	mapForNode := NewForNode("key", "value", mapItemsNode, mapLoopBody, nil, 1)
-	
+
 	mapRootNodes := []Node{
 		NewTextNode("<ul>", 1),
 		mapForNode,
 		NewTextNode("</ul>", 1),
 	}
-	
+
 	mapRoot := NewRootNode(mapRootNodes, 1)
-	
+
 	mapTemplate := &Template{
 		name:   "for_map_test",
 		source: "{% for key, value in map %}<li>{{ key }}: {{ value }}</li>{% endfor %}",
 		nodes:  mapRoot,
 		env:    engine.environment,
 	}
-	
+
 	engine.mu.Lock()
 	engine.templates["for_map_test"] = mapTemplate
 	engine.mu.Unlock()
-	
+
 	context = map[string]interface{}{
 		"map": map[string]string{
 			"name":    "John",
@@ -239,7 +239,7 @@ func TestForLoop(t *testing.T) {
 			"country": "USA",
 		},
 	}
-	
+
 	// For maps, we won't check exact output as order is not guaranteed
 	_, err = engine.Render("for_map_test", context)
 	if err != nil {
@@ -249,7 +249,7 @@ func TestForLoop(t *testing.T) {
 
 func TestInclude(t *testing.T) {
 	engine := New()
-	
+
 	// Create a partial template
 	partialBody := []Node{
 		NewTextNode("<div class=\"widget\">\n", 1),
@@ -261,9 +261,9 @@ func TestInclude(t *testing.T) {
 		NewTextNode("\n    </div>\n", 3),
 		NewTextNode("</div>", 4),
 	}
-	
+
 	partialRoot := NewRootNode(partialBody, 1)
-	
+
 	partialTemplate := &Template{
 		name:   "widget.html",
 		source: "partial template source",
@@ -271,21 +271,21 @@ func TestInclude(t *testing.T) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	// Create a main template that includes the partial
 	variables := map[string]Node{
 		"title":   NewLiteralNode("Latest News", 2),
 		"content": NewLiteralNode("Here is the latest news content.", 2),
 	}
-	
+
 	includeNode := NewIncludeNode(
 		NewLiteralNode("widget.html", 1),
 		variables,
-		false,  // ignoreMissing
-		false,  // only
+		false, // ignoreMissing
+		false, // only
 		1,
 	)
-	
+
 	mainBody := []Node{
 		NewTextNode("<!DOCTYPE html>\n<html>\n<body>\n", 1),
 		NewTextNode("    <h1>Main Page</h1>\n", 2),
@@ -294,9 +294,9 @@ func TestInclude(t *testing.T) {
 		NewTextNode("\n    </div>\n", 4),
 		NewTextNode("</body>\n</html>", 5),
 	}
-	
+
 	mainRoot := NewRootNode(mainBody, 1)
-	
+
 	mainTemplate := &Template{
 		name:   "main.html",
 		source: "main template source",
@@ -304,44 +304,44 @@ func TestInclude(t *testing.T) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	// Add the templates to the engine
 	engine.mu.Lock()
 	engine.templates["widget.html"] = partialTemplate
 	engine.templates["main.html"] = mainTemplate
 	engine.mu.Unlock()
-	
+
 	// Render the main template
 	context := map[string]interface{}{
 		"globalVar": "I'm global",
 	}
-	
+
 	result, err := engine.Render("main.html", context)
 	if err != nil {
 		t.Fatalf("Error rendering template with include: %v", err)
 	}
-	
+
 	expected := "<!DOCTYPE html>\n<html>\n<body>\n    <h1>Main Page</h1>\n    <div class=\"sidebar\">\n<div class=\"widget\">\n    <h3>Latest News</h3>\n    <div class=\"content\">\nHere is the latest news content.\n    </div>\n</div>\n    </div>\n</body>\n</html>"
-	
+
 	if result != expected {
 		t.Errorf("Include failed. Expected:\n%s\n\nGot:\n%s", expected, result)
 	}
-	
+
 	// Test with 'only'
 	onlyIncludeNode := NewIncludeNode(
 		NewLiteralNode("widget.html", 1),
 		map[string]Node{
 			"title":   NewLiteralNode("Only Title", 2),
-			"content": NewLiteralNode("Local content", 2),  // Use local content instead of global
+			"content": NewLiteralNode("Local content", 2), // Use local content instead of global
 		},
-		false,  // ignoreMissing
-		true,   // only
+		false, // ignoreMissing
+		true,  // only
 		1,
 	)
-	
+
 	onlyBody := []Node{onlyIncludeNode}
 	onlyRoot := NewRootNode(onlyBody, 1)
-	
+
 	onlyTemplate := &Template{
 		name:   "only_test.html",
 		source: "only test source",
@@ -349,20 +349,20 @@ func TestInclude(t *testing.T) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	engine.mu.Lock()
 	engine.templates["only_test.html"] = onlyTemplate
 	engine.mu.Unlock()
-	
+
 	// With 'only', just use the explicitly provided variables
 	result, err = engine.Render("only_test.html", context)
 	if err != nil {
 		t.Fatalf("Error rendering template with 'only': %v", err)
 	}
-	
+
 	// Now expected content is the local content, not an empty string
 	expected = "<div class=\"widget\">\n    <h3>Only Title</h3>\n    <div class=\"content\">\nLocal content\n    </div>\n</div>"
-	
+
 	if result != expected {
 		t.Errorf("Include with 'only' failed. Expected:\n%s\n\nGot:\n%s", expected, result)
 	}
@@ -370,7 +370,7 @@ func TestInclude(t *testing.T) {
 
 func TestBlockInheritance(t *testing.T) {
 	engine := New()
-	
+
 	// Create a base template
 	baseBody := []Node{
 		NewTextNode("<!DOCTYPE html>\n<html>\n<head>\n    <title>", 1),
@@ -381,9 +381,9 @@ func TestBlockInheritance(t *testing.T) {
 		NewBlockNode("footer", []Node{NewTextNode("Default Footer", 6)}, 6),
 		NewTextNode("\n    </div>\n</body>\n</html>", 7),
 	}
-	
+
 	baseRoot := NewRootNode(baseBody, 1)
-	
+
 	baseTemplate := &Template{
 		name:   "base.html",
 		source: "base template source",
@@ -391,16 +391,16 @@ func TestBlockInheritance(t *testing.T) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	// Create a child template
 	childBody := []Node{
 		NewExtendsNode(NewLiteralNode("base.html", 1), 1),
 		NewBlockNode("title", []Node{NewTextNode("Child Page Title", 2)}, 2),
 		NewBlockNode("content", []Node{NewTextNode("This is the child content.", 3)}, 3),
 	}
-	
+
 	childRoot := NewRootNode(childBody, 1)
-	
+
 	childTemplate := &Template{
 		name:   "child.html",
 		source: "child template source",
@@ -408,24 +408,24 @@ func TestBlockInheritance(t *testing.T) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	// Add both templates to the engine
 	engine.mu.Lock()
 	engine.templates["base.html"] = baseTemplate
 	engine.templates["child.html"] = childTemplate
 	engine.mu.Unlock()
-	
+
 	// Render the child template (which should use the base template)
 	context := map[string]interface{}{}
-	
+
 	result, err := engine.Render("child.html", context)
 	if err != nil {
 		t.Fatalf("Error rendering template with inheritance: %v", err)
 	}
-	
+
 	// Check that the child blocks were properly injected into the base template
 	expected := "<!DOCTYPE html>\n<html>\n<head>\n    <title>Child Page Title</title>\n</head>\n<body>\n    <div id=\"content\">\n        This is the child content.\n    </div>\n    <div id=\"footer\">\n        Default Footer\n    </div>\n</body>\n</html>"
-	
+
 	if result != expected {
 		t.Errorf("Template inheritance failed. Expected:\n%s\n\nGot:\n%s", expected, result)
 	}
@@ -433,57 +433,57 @@ func TestBlockInheritance(t *testing.T) {
 
 func TestIfStatement(t *testing.T) {
 	engine := New()
-	
+
 	// Create an if statement template manually
 	condition := NewVariableNode("show", 1)
 	trueBody := []Node{NewTextNode("Content is visible", 1)}
 	elseBody := []Node{NewTextNode("Content is hidden", 1)}
-	
+
 	ifNode := &IfNode{
 		conditions: []Node{condition},
 		bodies:     [][]Node{trueBody},
 		elseBranch: elseBody,
 		line:       1,
 	}
-	
+
 	root := NewRootNode([]Node{ifNode}, 1)
-	
+
 	template := &Template{
 		name:   "if_test",
 		source: "{% if show %}Content is visible{% else %}Content is hidden{% endif %}",
 		nodes:  root,
 		env:    engine.environment,
 	}
-	
+
 	engine.mu.Lock()
 	engine.templates["if_test"] = template
 	engine.mu.Unlock()
-	
+
 	// Test with condition = true
 	context := map[string]interface{}{
 		"show": true,
 	}
-	
+
 	result, err := engine.Render("if_test", context)
 	if err != nil {
 		t.Fatalf("Error rendering if template (true condition): %v", err)
 	}
-	
+
 	expected := "Content is visible"
 	if result != expected {
 		t.Errorf("Expected result to be %q, but got %q", expected, result)
 	}
-	
+
 	// Test with condition = false
 	context = map[string]interface{}{
 		"show": false,
 	}
-	
+
 	result, err = engine.Render("if_test", context)
 	if err != nil {
 		t.Fatalf("Error rendering if template (false condition): %v", err)
 	}
-	
+
 	expected = "Content is hidden"
 	if result != expected {
 		t.Errorf("Expected result to be %q, but got %q", expected, result)
@@ -492,17 +492,17 @@ func TestIfStatement(t *testing.T) {
 
 func TestSetTag(t *testing.T) {
 	engine := New()
-	
+
 	// Create a parser to parse a template string
 	parser := &Parser{}
 	source := "{% set greeting = 'Hello, Twig!' %}{{ greeting }}"
-	
+
 	// Parse the template
 	node, err := parser.Parse(source)
 	if err != nil {
 		t.Fatalf("Error parsing set template: %v", err)
 	}
-	
+
 	// Create a template with the parsed nodes
 	template := &Template{
 		name:   "set_test",
@@ -511,30 +511,30 @@ func TestSetTag(t *testing.T) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	// Register the template
 	engine.RegisterTemplate("set_test", template)
-	
+
 	// Render with an empty context
 	context := map[string]interface{}{}
-	
+
 	result, err := engine.Render("set_test", context)
 	if err != nil {
 		t.Fatalf("Error rendering set template: %v", err)
 	}
-	
+
 	expected := "Hello, Twig!"
 	if result != expected {
 		t.Errorf("Expected result to be %q, but got %q", expected, result)
 	}
-	
+
 	// Test setting with an expression
 	exprSource := "{% set num = 5 + 10 %}{{ num }}"
 	exprNode, err := parser.Parse(exprSource)
 	if err != nil {
 		t.Fatalf("Error parsing expression template: %v", err)
 	}
-	
+
 	// Create a template with the parsed nodes
 	exprTemplate := &Template{
 		name:   "expr_test",
@@ -543,16 +543,16 @@ func TestSetTag(t *testing.T) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	// Register the template
 	engine.RegisterTemplate("expr_test", exprTemplate)
-	
+
 	// Render with an empty context
 	exprResult, err := engine.Render("expr_test", context)
 	if err != nil {
 		t.Fatalf("Error rendering expression template: %v", err)
 	}
-	
+
 	exprExpected := "15"
 	if exprResult != exprExpected {
 		t.Errorf("Expected result to be %q, but got %q", exprExpected, exprResult)
@@ -561,10 +561,10 @@ func TestSetTag(t *testing.T) {
 
 func TestFilters(t *testing.T) {
 	engine := New()
-	
+
 	// Create a parser to parse templates with filters
 	parser := &Parser{}
-	
+
 	// Test cases for different filter scenarios
 	testCases := []struct {
 		name     string
@@ -603,7 +603,7 @@ func TestFilters(t *testing.T) {
 			context:  nil,
 			expected: "A, B, C",
 		},
-		
+
 		// Complex filter usage
 		{
 			name:     "filter_in_expression",
@@ -635,7 +635,7 @@ func TestFilters(t *testing.T) {
 			context:  nil,
 			expected: "hello",
 		},
-		
+
 		// Common filter use cases
 		{
 			name:     "escape_filter",
@@ -667,7 +667,7 @@ func TestFilters(t *testing.T) {
 			context:  nil,
 			expected: "heyyx wxryd",
 		},
-		
+
 		// Special cases
 		{
 			name:     "filter_on_function_result",
@@ -700,14 +700,14 @@ func TestFilters(t *testing.T) {
 			expected: "hello",
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			node, err := parser.Parse(tc.source)
 			if err != nil {
 				t.Fatalf("Error parsing template with filter: %v", err)
 			}
-			
+
 			template := &Template{
 				name:   tc.name,
 				source: tc.source,
@@ -715,14 +715,14 @@ func TestFilters(t *testing.T) {
 				env:    engine.environment,
 				engine: engine,
 			}
-			
+
 			engine.RegisterTemplate(tc.name, template)
-			
+
 			result, err := engine.Render(tc.name, tc.context)
 			if err != nil {
 				t.Fatalf("Error rendering template with filter: %v", err)
 			}
-			
+
 			if result != tc.expected {
 				t.Errorf("Expected result to be %q, but got %q", tc.expected, result)
 			}
@@ -732,10 +732,10 @@ func TestFilters(t *testing.T) {
 
 func TestFunctions(t *testing.T) {
 	engine := New()
-	
+
 	// Create a parser to parse a template with functions
 	parser := &Parser{}
-	
+
 	// Test basic function parsing without worrying about exact output for now
 	testCases := []struct {
 		name   string
@@ -745,14 +745,14 @@ func TestFunctions(t *testing.T) {
 		{"function_with_args", "{{ min(10, 5, 8, 2, 15) }}"},
 		{"function_with_complex_args", "{{ merge([1, 2], [3, 4], [5, 6]) }}"},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			node, err := parser.Parse(tc.source)
 			if err != nil {
 				t.Fatalf("Error parsing template: %v", err)
 			}
-			
+
 			template := &Template{
 				name:   tc.name,
 				source: tc.source,
@@ -760,9 +760,9 @@ func TestFunctions(t *testing.T) {
 				env:    engine.environment,
 				engine: engine,
 			}
-			
+
 			engine.RegisterTemplate(tc.name, template)
-			
+
 			// Just check that the template renders without errors
 			_, err = engine.Render(tc.name, nil)
 			if err != nil {
@@ -774,17 +774,17 @@ func TestFunctions(t *testing.T) {
 
 func TestIsTests(t *testing.T) {
 	engine := New()
-	
+
 	// Create a parser to parse a template with is tests
 	parser := &Parser{}
-	
+
 	// Test 'is defined' test
 	source := "{% if variable is defined %}defined{% else %}not defined{% endif %}"
 	node, err := parser.Parse(source)
 	if err != nil {
 		t.Fatalf("Error parsing 'is defined' test template: %v", err)
 	}
-	
+
 	template := &Template{
 		name:   "is_defined_test",
 		source: source,
@@ -792,28 +792,28 @@ func TestIsTests(t *testing.T) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	engine.RegisterTemplate("is_defined_test", template)
-	
+
 	// Test with undefined variable - run but don't check the exact output
 	_, err = engine.Render("is_defined_test", nil)
 	if err != nil {
 		t.Fatalf("Error rendering 'is defined' test template with undefined variable: %v", err)
 	}
-	
+
 	// Test with defined variable - run but don't check the exact output
 	_, err = engine.Render("is_defined_test", map[string]interface{}{"variable": "value"})
 	if err != nil {
 		t.Fatalf("Error rendering 'is defined' test template with defined variable: %v", err)
 	}
-	
+
 	// Test 'is empty' test
 	emptySource := "{% if array is empty %}empty{% else %}not empty{% endif %}"
 	emptyNode, err := parser.Parse(emptySource)
 	if err != nil {
 		t.Fatalf("Error parsing 'is empty' test template: %v", err)
 	}
-	
+
 	emptyTemplate := &Template{
 		name:   "is_empty_test",
 		source: emptySource,
@@ -821,28 +821,28 @@ func TestIsTests(t *testing.T) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	engine.RegisterTemplate("is_empty_test", emptyTemplate)
-	
+
 	// Test with empty array - run but don't check the exact output
 	_, err = engine.Render("is_empty_test", map[string]interface{}{"array": []string{}})
 	if err != nil {
 		t.Fatalf("Error rendering 'is empty' test template with empty array: %v", err)
 	}
-	
+
 	// Test with non-empty array - run but don't check the exact output
 	_, err = engine.Render("is_empty_test", map[string]interface{}{"array": []string{"a", "b"}})
 	if err != nil {
 		t.Fatalf("Error rendering 'is empty' test template with non-empty array: %v", err)
 	}
-	
+
 	// Test 'is not' syntax
 	notSource := "{% if value is not empty %}not empty{% else %}empty{% endif %}"
 	notNode, err := parser.Parse(notSource)
 	if err != nil {
 		t.Fatalf("Error parsing 'is not' test template: %v", err)
 	}
-	
+
 	notTemplate := &Template{
 		name:   "is_not_test",
 		source: notSource,
@@ -850,9 +850,9 @@ func TestIsTests(t *testing.T) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	engine.RegisterTemplate("is_not_test", notTemplate)
-	
+
 	// Test with non-empty value - run but don't check the exact output
 	_, err = engine.Render("is_not_test", map[string]interface{}{"value": "something"})
 	if err != nil {
@@ -862,17 +862,17 @@ func TestIsTests(t *testing.T) {
 
 func TestOperators(t *testing.T) {
 	engine := New()
-	
+
 	// Create a parser to parse a template with operators
 	parser := &Parser{}
-	
+
 	// Test standard operators (simpler test for now)
 	source := "{{ 5 + 3 }}"
 	node, err := parser.Parse(source)
 	if err != nil {
 		t.Fatalf("Error parsing operator template: %v", err)
 	}
-	
+
 	template := &Template{
 		name:   "operator_test",
 		source: source,
@@ -880,14 +880,14 @@ func TestOperators(t *testing.T) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	engine.RegisterTemplate("operator_test", template)
-	
+
 	_, err = engine.Render("operator_test", nil)
 	if err != nil {
 		t.Fatalf("Error rendering operator template: %v", err)
 	}
-	
+
 	// Test basic operator parsing without worrying about exact output for now
 	testCases := []struct {
 		name   string
@@ -899,14 +899,14 @@ func TestOperators(t *testing.T) {
 		{"starts_with_operator", "{% if 'hello' starts with 'he' %}starts with{% else %}does not start with{% endif %}"},
 		{"ends_with_operator", "{% if 'hello' ends with 'lo' %}ends with{% else %}does not end with{% endif %}"},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			node, err := parser.Parse(tc.source)
 			if err != nil {
 				t.Fatalf("Error parsing template: %v", err)
 			}
-			
+
 			template := &Template{
 				name:   tc.name,
 				source: tc.source,
@@ -914,9 +914,9 @@ func TestOperators(t *testing.T) {
 				env:    engine.environment,
 				engine: engine,
 			}
-			
+
 			engine.RegisterTemplate(tc.name, template)
-			
+
 			// Just check that the template renders without errors
 			_, err = engine.Render(tc.name, nil)
 			if err != nil {
@@ -929,17 +929,17 @@ func TestOperators(t *testing.T) {
 func TestFilterChainOptimization(t *testing.T) {
 	// Create a Twig engine
 	engine := New()
-	
+
 	// Create a template with a long filter chain
 	source := "{{ 'hello world'|upper|trim|slice(0, 5)|replace('H', 'J')|upper }}"
-	
+
 	// Parse the template
 	parser := &Parser{}
 	node, err := parser.Parse(source)
 	if err != nil {
 		t.Fatalf("Error parsing template: %v", err)
 	}
-	
+
 	// Create a template
 	template := &Template{
 		source: source,
@@ -947,13 +947,13 @@ func TestFilterChainOptimization(t *testing.T) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	// Render the template
 	result, err := template.Render(nil)
 	if err != nil {
 		t.Fatalf("Error rendering template: %v", err)
 	}
-	
+
 	// Verify the expected output (should get the same result with optimized chain)
 	expected := "JELLO"
 	if result != expected {
@@ -964,17 +964,17 @@ func TestFilterChainOptimization(t *testing.T) {
 func BenchmarkFilterChain(b *testing.B) {
 	// Create a Twig engine
 	engine := New()
-	
+
 	// Create a template with a long filter chain
 	source := "{{ 'hello world'|upper|trim|slice(0, 5)|replace('H', 'J') }}"
-	
+
 	// Parse the template
 	parser := &Parser{}
 	node, err := parser.Parse(source)
 	if err != nil {
 		b.Fatalf("Error parsing template: %v", err)
 	}
-	
+
 	// Create a template
 	template := &Template{
 		source: source,
@@ -982,7 +982,7 @@ func BenchmarkFilterChain(b *testing.B) {
 		env:    engine.environment,
 		engine: engine,
 	}
-	
+
 	// Bench the rendering
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -996,7 +996,7 @@ func BenchmarkFilterChain(b *testing.B) {
 func TestTemplateModificationTime(t *testing.T) {
 	// Create a temporary directory for template files
 	tempDir := t.TempDir()
-	
+
 	// Create a test template file
 	templatePath := filepath.Join(tempDir, "test.twig")
 	initialContent := "Hello,{{ name }}!"
@@ -1004,23 +1004,23 @@ func TestTemplateModificationTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test template: %v", err)
 	}
-	
+
 	// Create a Twig engine
 	engine := New()
-	
+
 	// Register a file system loader pointing to our temp directory
 	loader := NewFileSystemLoader([]string{tempDir})
 	engine.RegisterLoader(loader)
-	
+
 	// Enable auto-reload
 	engine.SetAutoReload(true)
-	
+
 	// First load of the template
 	template1, err := engine.Load("test")
 	if err != nil {
 		t.Fatalf("Failed to load template: %v", err)
 	}
-	
+
 	// Render the template
 	result1, err := template1.Render(map[string]interface{}{"name": "World"})
 	if err != nil {
@@ -1029,80 +1029,80 @@ func TestTemplateModificationTime(t *testing.T) {
 	if result1 != "Hello,World!" {
 		t.Errorf("Expected 'Hello,World!', got '%s'", result1)
 	}
-	
+
 	// Store the first template's timestamp
 	initialTimestamp := template1.lastModified
-	
+
 	// Load the template again - should use cache since file hasn't changed
 	template2, err := engine.Load("test")
 	if err != nil {
 		t.Fatalf("Failed to load template second time: %v", err)
 	}
-	
+
 	// Verify we got the same template back (cache hit)
 	if template2.lastModified != initialTimestamp {
-		t.Errorf("Expected same timestamp, got different values: %d vs %d", 
+		t.Errorf("Expected same timestamp, got different values: %d vs %d",
 			initialTimestamp, template2.lastModified)
 	}
-	
+
 	// Sleep to ensure file modification time will be different
 	time.Sleep(1 * time.Second)
-	
+
 	// Modify the template file
 	modifiedContent := "Greetings,{{ name }}!"
 	err = os.WriteFile(templatePath, []byte(modifiedContent), 0644)
 	if err != nil {
 		t.Fatalf("Failed to update test template: %v", err)
 	}
-	
+
 	// Load the template again - should detect the change and reload
 	template3, err := engine.Load("test")
 	if err != nil {
 		t.Fatalf("Failed to load modified template: %v", err)
 	}
-	
+
 	// Render the template again
 	result3, err := template3.Render(map[string]interface{}{"name": "World"})
 	if err != nil {
 		t.Fatalf("Failed to render modified template: %v", err)
 	}
-	
+
 	// Verify we got the updated content
 	if result3 != "Greetings,World!" {
 		t.Errorf("Expected 'Greetings,World!', got '%s'", result3)
 	}
-	
+
 	// Verify the template was reloaded (newer timestamp)
 	if template3.lastModified <= initialTimestamp {
-		t.Errorf("Expected newer timestamp, but got %d <= %d", 
+		t.Errorf("Expected newer timestamp, but got %d <= %d",
 			template3.lastModified, initialTimestamp)
 	}
-	
+
 	// Disable auto-reload
 	engine.SetAutoReload(false)
-	
+
 	// Sleep to ensure file modification time will be different
 	time.Sleep(1 * time.Second)
-	
+
 	// Modify the template file again
 	finalContent := "Welcome,{{ name }}!"
 	err = os.WriteFile(templatePath, []byte(finalContent), 0644)
 	if err != nil {
 		t.Fatalf("Failed to update test template again: %v", err)
 	}
-	
+
 	// Load the template again - should NOT detect the change because auto-reload is off
 	template4, err := engine.Load("test")
 	if err != nil {
 		t.Fatalf("Failed to load template with auto-reload off: %v", err)
 	}
-	
+
 	// Render the template again
 	result4, err := template4.Render(map[string]interface{}{"name": "World"})
 	if err != nil {
 		t.Fatalf("Failed to render template with auto-reload off: %v", err)
 	}
-	
+
 	// Verify we still have the previous content, not the updated one
 	if result4 != "Greetings,World!" {
 		t.Errorf("Expected 'Greetings,World!', got '%s'", result4)
@@ -1112,7 +1112,7 @@ func TestTemplateModificationTime(t *testing.T) {
 func TestDevelopmentMode(t *testing.T) {
 	// Create a new engine
 	engine := New()
-	
+
 	// Verify default settings
 	if !engine.environment.cache {
 		t.Errorf("Cache should be enabled by default")
@@ -1123,10 +1123,10 @@ func TestDevelopmentMode(t *testing.T) {
 	if engine.autoReload {
 		t.Errorf("AutoReload should be disabled by default")
 	}
-	
+
 	// Enable development mode
 	engine.SetDevelopmentMode(true)
-	
+
 	// Check that the settings were changed correctly
 	if engine.environment.cache {
 		t.Errorf("Cache should be disabled in development mode")
@@ -1137,28 +1137,28 @@ func TestDevelopmentMode(t *testing.T) {
 	if !engine.autoReload {
 		t.Errorf("AutoReload should be enabled in development mode")
 	}
-	
+
 	// Create a template source
 	source := "Hello,{{ name }}!"
-	
+
 	// Create an array loader and register it
 	loader := NewArrayLoader(map[string]string{
 		"dev_test.twig": source,
 	})
 	engine.RegisterLoader(loader)
-	
+
 	// Parse the template to verify it's valid
 	parser := &Parser{}
 	_, err := parser.Parse(source)
 	if err != nil {
 		t.Fatalf("Error parsing template: %v", err)
 	}
-	
+
 	// Verify the template isn't in the cache yet
 	if len(engine.templates) > 0 {
 		t.Errorf("Templates map should be empty in development mode, but has %d entries", len(engine.templates))
 	}
-	
+
 	// In development mode, rendering should work but not cache
 	result, err := engine.Render("dev_test.twig", map[string]interface{}{
 		"name": "World",
@@ -1169,10 +1169,10 @@ func TestDevelopmentMode(t *testing.T) {
 	if result != "Hello,World!" {
 		t.Errorf("Expected 'Hello,World!', got '%s'", result)
 	}
-	
+
 	// Disable development mode
 	engine.SetDevelopmentMode(false)
-	
+
 	// Check that the settings were changed back
 	if !engine.environment.cache {
 		t.Errorf("Cache should be enabled when development mode is off")
@@ -1183,7 +1183,7 @@ func TestDevelopmentMode(t *testing.T) {
 	if engine.autoReload {
 		t.Errorf("AutoReload should be disabled when development mode is off")
 	}
-	
+
 	// In production mode, rendering should cache the template
 	result, err = engine.Render("dev_test.twig", map[string]interface{}{
 		"name": "World",
@@ -1194,7 +1194,7 @@ func TestDevelopmentMode(t *testing.T) {
 	if result != "Hello,World!" {
 		t.Errorf("Expected 'Hello,World!', got '%s'", result)
 	}
-	
+
 	// Template should now be in the cache
 	if len(engine.templates) != 1 {
 		t.Errorf("Templates map should have 1 entry, but has %d", len(engine.templates))

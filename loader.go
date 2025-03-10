@@ -10,7 +10,7 @@ import (
 type Loader interface {
 	// Load loads a template by name, returning its source code
 	Load(name string) (string, error)
-	
+
 	// Exists checks if a template exists
 	Exists(name string) bool
 }
@@ -18,7 +18,7 @@ type Loader interface {
 // TimestampAwareLoader is an interface for loaders that can check modification times
 type TimestampAwareLoader interface {
 	Loader
-	
+
 	// GetModifiedTime returns the last modification time of a template
 	GetModifiedTime(name string) (int64, error)
 }
@@ -46,22 +46,22 @@ type ChainLoader struct {
 func NewFileSystemLoader(paths []string) *FileSystemLoader {
 	// Add default path
 	defaultPaths := []string{"."}
-	
+
 	// If no paths provided, use default
 	if len(paths) == 0 {
 		paths = defaultPaths
 	}
-	
+
 	// Normalize paths
 	normalizedPaths := make([]string, len(paths))
 	for i, path := range paths {
 		normalizedPaths[i] = filepath.Clean(path)
 	}
-	
+
 	return &FileSystemLoader{
-		paths:        normalizedPaths,
-		suffix:       ".twig",
-		defaultPaths: defaultPaths,
+		paths:         normalizedPaths,
+		suffix:        ".twig",
+		defaultPaths:  defaultPaths,
 		templatePaths: make(map[string]string),
 	}
 }
@@ -77,7 +77,7 @@ func (l *FileSystemLoader) Load(name string) (string, error) {
 			if err != nil {
 				return "", fmt.Errorf("error reading template %s: %w", name, err)
 			}
-			
+
 			return string(content), nil
 		}
 		// If file doesn't exist anymore, remove from cache and search again
@@ -87,27 +87,27 @@ func (l *FileSystemLoader) Load(name string) (string, error) {
 	// Check each path for the template
 	for _, path := range l.paths {
 		filePath := filepath.Join(path, name)
-		
+
 		// Add suffix if not already present
 		if !hasSuffix(filePath, l.suffix) {
 			filePath = filePath + l.suffix
 		}
-		
+
 		// Check if file exists
 		if _, err := os.Stat(filePath); err == nil {
 			// Save the path for future lookups
 			l.templatePaths[name] = filePath
-			
+
 			// Read file content
 			content, err := os.ReadFile(filePath)
 			if err != nil {
 				return "", fmt.Errorf("error reading template %s: %w", name, err)
 			}
-			
+
 			return string(content), nil
 		}
 	}
-	
+
 	return "", fmt.Errorf("%w: %s", ErrTemplateNotFound, name)
 }
 
@@ -116,18 +116,18 @@ func (l *FileSystemLoader) Exists(name string) bool {
 	// Check each path for the template
 	for _, path := range l.paths {
 		filePath := filepath.Join(path, name)
-		
+
 		// Add suffix if not already present
 		if !hasSuffix(filePath, l.suffix) {
 			filePath = filePath + l.suffix
 		}
-		
+
 		// Check if file exists
 		if _, err := os.Stat(filePath); err == nil {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -148,29 +148,29 @@ func (l *FileSystemLoader) GetModifiedTime(name string) (int64, error) {
 			}
 			return 0, err
 		}
-		
+
 		return info.ModTime().Unix(), nil
 	}
-	
+
 	// Otherwise search for the template
 	for _, path := range l.paths {
 		filePath := filepath.Join(path, name)
-		
+
 		// Add suffix if not already present
 		if !hasSuffix(filePath, l.suffix) {
 			filePath = filePath + l.suffix
 		}
-		
+
 		// Check if file exists
 		info, err := os.Stat(filePath)
 		if err == nil {
 			// Save the path for future lookups
 			l.templatePaths[name] = filePath
-			
+
 			return info.ModTime().Unix(), nil
 		}
 	}
-	
+
 	return 0, fmt.Errorf("%w: %s", ErrTemplateNotFound, name)
 }
 
@@ -186,7 +186,7 @@ func (l *ArrayLoader) Load(name string) (string, error) {
 	if template, ok := l.templates[name]; ok {
 		return template, nil
 	}
-	
+
 	return "", fmt.Errorf("%w: %s", ErrTemplateNotFound, name)
 }
 
@@ -215,7 +215,7 @@ func (l *ChainLoader) Load(name string) (string, error) {
 			return loader.Load(name)
 		}
 	}
-	
+
 	return "", fmt.Errorf("%w: %s", ErrTemplateNotFound, name)
 }
 
@@ -226,7 +226,7 @@ func (l *ChainLoader) Exists(name string) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
 

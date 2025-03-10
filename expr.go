@@ -136,7 +136,7 @@ func (n *ExpressionNode) Line() int {
 // Render implementation for LiteralNode
 func (n *LiteralNode) Render(w io.Writer, ctx *RenderContext) error {
 	var str string
-	
+
 	switch v := n.value.(type) {
 	case string:
 		str = v
@@ -151,7 +151,7 @@ func (n *LiteralNode) Render(w io.Writer, ctx *RenderContext) error {
 	default:
 		str = ctx.ToString(v)
 	}
-	
+
 	_, err := w.Write([]byte(str))
 	return err
 }
@@ -209,7 +209,7 @@ func (n *VariableNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	str := ctx.ToString(value)
 	_, err = w.Write([]byte(str))
 	return err
@@ -221,22 +221,22 @@ func (n *GetAttrNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	attrName, err := ctx.EvaluateExpression(n.attribute)
 	if err != nil {
 		return err
 	}
-	
+
 	attrStr, ok := attrName.(string)
 	if !ok {
 		return fmt.Errorf("attribute name must be a string")
 	}
-	
+
 	value, err := ctx.getAttribute(obj, attrStr)
 	if err != nil {
 		return err
 	}
-	
+
 	str := ctx.ToString(value)
 	_, err = w.Write([]byte(str))
 	return err
@@ -248,7 +248,7 @@ func (n *BinaryNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	str := ctx.ToString(result)
 	_, err = w.Write([]byte(str))
 	return err
@@ -260,7 +260,7 @@ func (n *FilterNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	str := ctx.ToString(result)
 	_, err = w.Write([]byte(str))
 	return err
@@ -272,7 +272,7 @@ func (n *TestNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	str := ctx.ToString(result)
 	_, err = w.Write([]byte(str))
 	return err
@@ -284,7 +284,7 @@ func (n *UnaryNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	str := ctx.ToString(result)
 	_, err = w.Write([]byte(str))
 	return err
@@ -296,7 +296,7 @@ func (n *ConditionalNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	str := ctx.ToString(result)
 	_, err = w.Write([]byte(str))
 	return err
@@ -308,7 +308,7 @@ func (n *ArrayNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	str := ctx.ToString(result)
 	_, err = w.Write([]byte(str))
 	return err

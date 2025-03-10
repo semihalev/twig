@@ -59,26 +59,26 @@ func main() {
 		fmt.Printf("Error registering template: %v\n", err)
 		return
 	}
-	
+
 	// Create a context with some products
 	context := map[string]interface{}{
 		"shop_name": "Twig Marketplace",
 		"products": []map[string]interface{}{
 			{
-				"name": "Laptop",
+				"name":  "Laptop",
 				"price": 1200,
 			},
 			{
-				"name": "Phone",
+				"name":  "Phone",
 				"price": 800,
 			},
 			{
-				"name": "Headphones",
+				"name":  "Headphones",
 				"price": 200,
 			},
 		},
 	}
-	
+
 	// Render the template
 	fmt.Println("Rendering complex shop template with set tags:")
 	err = engine.RenderTo(os.Stdout, "shop_template", context)

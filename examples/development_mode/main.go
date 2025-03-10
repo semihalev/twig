@@ -45,18 +45,18 @@ func main() {
 
 	// Create a Twig engine in development mode
 	engine := twig.New()
-	
+
 	// Enable development mode
 	engine.SetDevelopmentMode(true)
 	fmt.Println("Development mode enabled:")
 	fmt.Printf("  - Cache enabled:    %v\n", engine.IsCacheEnabled())
 	fmt.Printf("  - Debug enabled:    %v\n", engine.IsDebugEnabled())
 	fmt.Printf("  - AutoReload:       %v\n", engine.IsAutoReloadEnabled())
-	
+
 	// Register a template loader
 	loader := twig.NewFileSystemLoader([]string{templatesDir})
 	engine.RegisterLoader(loader)
-	
+
 	// Context for rendering
 	context := map[string]interface{}{
 		"title": "Twig Development Mode Example",
@@ -64,7 +64,7 @@ func main() {
 		"mode":  "development",
 		"items": []string{"Easy to use", "No template caching", "Auto-reloading enabled"},
 	}
-	
+
 	// Render the template to stdout
 	fmt.Println("\n--- Rendering in Development Mode ---")
 	err = engine.RenderTo(os.Stdout, "hello.twig", context)
@@ -72,21 +72,21 @@ func main() {
 		fmt.Printf("Error rendering template: %v\n", err)
 		return
 	}
-	
+
 	// Cached templates should be empty in development mode
 	fmt.Printf("\n\nNumber of cached templates: %d\n", engine.GetCachedTemplateCount())
-	
+
 	// Now switch to production mode
 	engine.SetDevelopmentMode(false)
 	fmt.Println("\nProduction mode enabled:")
 	fmt.Printf("  - Cache enabled:    %v\n", engine.IsCacheEnabled())
 	fmt.Printf("  - Debug enabled:    %v\n", engine.IsDebugEnabled())
 	fmt.Printf("  - AutoReload:       %v\n", engine.IsAutoReloadEnabled())
-	
+
 	// Change the context
 	context["mode"] = "production"
 	context["items"] = []string{"Maximum performance", "Template caching", "Optimized for speed"}
-	
+
 	// Render again in production mode
 	fmt.Println("\n--- Rendering in Production Mode ---")
 	err = engine.RenderTo(os.Stdout, "hello.twig", context)
@@ -94,16 +94,16 @@ func main() {
 		fmt.Printf("Error rendering template: %v\n", err)
 		return
 	}
-	
+
 	// Now we should have templates in the cache
 	fmt.Printf("\n\nNumber of cached templates: %d\n", engine.GetCachedTemplateCount())
 	fmt.Println("Template names in cache:")
 	for _, name := range engine.GetCachedTemplateNames() {
 		fmt.Printf("  - %s\n", name)
 	}
-	
+
 	fmt.Println("\nDemonstrating auto-reload with file modification:")
-	
+
 	// Let's modify the template file
 	fmt.Println("Modifying template file...")
 	modifiedContent := `
@@ -134,15 +134,15 @@ func main() {
 		fmt.Printf("Error modifying template: %v\n", err)
 		return
 	}
-	
+
 	// Enable development mode
 	engine.SetDevelopmentMode(true)
 	context["title"] = "Twig Auto-Reload Example"
-	
+
 	// Pause to make sure the file system registers the change
 	fmt.Println("Waiting for file system to register change...")
 	time.Sleep(1 * time.Second)
-	
+
 	// Render the template again - it should load the modified version
 	fmt.Println("\n--- Rendering with Auto-Reload ---")
 	err = engine.RenderTo(os.Stdout, "hello.twig", context)
@@ -150,6 +150,6 @@ func main() {
 		fmt.Printf("Error rendering template: %v\n", err)
 		return
 	}
-	
+
 	fmt.Println("\n\nSuccess! The template was automatically reloaded.")
 }

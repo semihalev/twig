@@ -8,7 +8,9 @@ Twig is a fast, memory-efficient Twig template engine implementation for Go. It 
 - Full Twig syntax support
 - Template inheritance
 - Extensible with filters, functions, tests, and operators
-- Multiple loader types (filesystem, in-memory)
+- Multiple loader types (filesystem, in-memory, compiled)
+- Template compilation for maximum performance
+- Whitespace control features (trim modifiers, spaceless tag)
 - Compatible with Go's standard library interfaces
 
 ## Installation
@@ -327,6 +329,55 @@ The library is designed with performance in mind:
 - Template caching
 - Production/development mode toggle
 - Optimized filter chain processing
+
+## Template Compilation
+
+For maximum performance in production environments, Twig supports compiling templates to a binary format:
+
+### Benefits of Template Compilation
+
+1. **Faster Rendering**: Pre-compiled templates skip the parsing step, leading to faster rendering
+2. **Reduced Memory Usage**: Compiled templates can be more memory-efficient
+3. **Better Deployment Options**: Compile during build and distribute only compiled templates
+4. **No Source Required**: Run without needing access to the original template files
+
+### Using Compiled Templates
+
+```go
+// Create a new engine
+engine := twig.New()
+
+// Compile a template
+template, _ := engine.Load("template_name")
+compiled, _ := template.Compile()
+
+// Serialize to binary data
+data, _ := twig.SerializeCompiledTemplate(compiled)
+
+// Save to disk or transmit elsewhere...
+ioutil.WriteFile("template.compiled", data, 0644)
+
+// In production, load the compiled template
+compiledData, _ := ioutil.ReadFile("template.compiled")
+engine.LoadFromCompiledData(compiledData)
+```
+
+### Compiled Template Loader
+
+A dedicated `CompiledLoader` provides easy handling of compiled templates:
+
+```go
+// Create a loader for compiled templates
+loader := twig.NewCompiledLoader("./compiled_templates")
+
+// Compile all templates in the engine
+loader.CompileAll(engine)
+
+// In production
+loader.LoadAll(engine)
+```
+
+See the `examples/compiled_templates` directory for a complete example.
 
 ## License
 

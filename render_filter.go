@@ -27,7 +27,7 @@ type FilterChainItem struct {
 func (ctx *RenderContext) DetectFilterChain(node Node) (Node, []FilterChainItem, error) {
 	var chain []FilterChainItem
 	currentNode := node
-	
+
 	// Traverse down the filter chain, collecting filters as we go
 	for {
 		// Check if the current node is a filter node
@@ -36,7 +36,7 @@ func (ctx *RenderContext) DetectFilterChain(node Node) (Node, []FilterChainItem,
 			// We've reached the base value node
 			break
 		}
-		
+
 		// Evaluate filter arguments
 		args := make([]interface{}, len(filterNode.args))
 		for i, arg := range filterNode.args {
@@ -46,17 +46,17 @@ func (ctx *RenderContext) DetectFilterChain(node Node) (Node, []FilterChainItem,
 			}
 			args[i] = val
 		}
-		
+
 		// Add this filter to the chain (prepend to maintain order)
 		chain = append([]FilterChainItem{{
 			name: filterNode.filter,
 			args: args,
 		}}, chain...)
-		
+
 		// Continue with the next node in the chain
 		currentNode = filterNode.node
 	}
-	
+
 	return currentNode, chain, nil
 }
 
@@ -65,7 +65,7 @@ func (ctx *RenderContext) ApplyFilterChain(baseValue interface{}, chain []Filter
 	// Start with the base value
 	result := baseValue
 	var err error
-	
+
 	// Apply each filter in the chain
 	for _, filter := range chain {
 		result, err = ctx.ApplyFilter(filter.name, result, filter.args...)
@@ -73,7 +73,7 @@ func (ctx *RenderContext) ApplyFilterChain(baseValue interface{}, chain []Filter
 			return nil, err
 		}
 	}
-	
+
 	return result, nil
 }
 
@@ -84,13 +84,13 @@ func (ctx *RenderContext) evaluateFilterNode(n *FilterNode) (interface{}, error)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Evaluate the base value
 	value, err := ctx.EvaluateExpression(baseNode)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Apply the entire filter chain in a single operation
 	return ctx.ApplyFilterChain(value, filterChain)
 }

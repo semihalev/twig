@@ -34,19 +34,19 @@ func NewSpacelessNode(body []Node, line int) *SpacelessNode {
 func (n *SpacelessNode) Render(w io.Writer, ctx *RenderContext) error {
 	// First, render the content to a string using a buffer
 	var buf StringBuffer
-	
+
 	for _, node := range n.body {
 		if err := node.Render(&buf, ctx); err != nil {
 			return err
 		}
 	}
-	
+
 	// Get the rendered content as a string
 	content := buf.String()
-	
+
 	// Apply spaceless processing (remove whitespace between HTML tags)
 	result := removeWhitespaceBetweenTags(content)
-	
+
 	// Write the processed result
 	_, err := w.Write([]byte(result))
 	return err

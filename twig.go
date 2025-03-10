@@ -4,6 +4,7 @@ package twig
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"sync"
 	"time"
@@ -17,31 +18,31 @@ type Engine struct {
 	strictVars  bool
 	loaders     []Loader
 	environment *Environment
-	
+
 	// Test helper - override Parse function
 	Parse func(source string) (*Template, error)
 }
 
 // Template represents a parsed and compiled Twig template
 type Template struct {
-	name          string
-	source        string
-	nodes         Node
-	env           *Environment
-	engine        *Engine       // Reference back to the engine for loading parent templates
-	loader        Loader        // The loader that loaded this template
-	lastModified  int64         // Last modified timestamp for this template
+	name         string
+	source       string
+	nodes        Node
+	env          *Environment
+	engine       *Engine // Reference back to the engine for loading parent templates
+	loader       Loader  // The loader that loaded this template
+	lastModified int64   // Last modified timestamp for this template
 }
 
 // Environment holds configuration and context for template rendering
 type Environment struct {
-	globals     map[string]interface{}
-	filters     map[string]FilterFunc
-	functions   map[string]FunctionFunc
-	tests       map[string]TestFunc
-	operators   map[string]OperatorFunc
-	extensions  []Extension
-	cache       bool
+	globals    map[string]interface{}
+	filters    map[string]FilterFunc
+	functions  map[string]FunctionFunc
+	tests      map[string]TestFunc
+	operators  map[string]OperatorFunc
+	extensions []Extension
+	cache      bool
 	autoescape bool
 	debug      bool
 	sandbox    bool
@@ -50,11 +51,11 @@ type Environment struct {
 // New creates a new Twig engine instance
 func New() *Engine {
 	env := &Environment{
-		globals:     make(map[string]interface{}),
-		filters:     make(map[string]FilterFunc),
-		functions:   make(map[string]FunctionFunc),
-		tests:       make(map[string]TestFunc),
-		operators:   make(map[string]OperatorFunc),
+		globals:    make(map[string]interface{}),
+		filters:    make(map[string]FilterFunc),
+		functions:  make(map[string]FunctionFunc),
+		tests:      make(map[string]TestFunc),
+		operators:  make(map[string]OperatorFunc),
 		autoescape: true,
 		cache:      true,  // Enable caching by default
 		debug:      false, // Disable debug mode by default
@@ -63,12 +64,12 @@ func New() *Engine {
 	engine := &Engine{
 		templates:   make(map[string]*Template),
 		environment: env,
-		autoReload: false, // Disable auto-reload by default
+		autoReload:  false, // Disable auto-reload by default
 	}
-	
+
 	// Register the core extension by default
 	engine.AddExtension(&CoreExtension{})
-	
+
 	return engine
 }
 
@@ -132,12 +133,12 @@ func (e *Engine) Load(name string) (*Template, error) {
 		e.mu.RLock()
 		if tmpl, ok := e.templates[name]; ok {
 			e.mu.RUnlock()
-			
+
 			// If auto-reload is disabled, return the cached template
 			if !e.autoReload {
 				return tmpl, nil
 			}
-			
+
 			// If auto-reload is enabled, check if the template has been modified
 			if tmpl.loader != nil {
 				// Check if the loader supports timestamp checking
@@ -158,20 +159,20 @@ func (e *Engine) Load(name string) (*Template, error) {
 	// Template not in cache or cache disabled or needs reloading
 	var lastModified int64
 	var sourceLoader Loader
-	
+
 	for _, loader := range e.loaders {
 		source, err := loader.Load(name)
 		if err != nil {
 			continue
 		}
-		
+
 		// If this loader supports modification times, get the time
 		if tsLoader, ok := loader.(TimestampAwareLoader); ok {
 			lastModified, _ = tsLoader.GetModifiedTime(name)
 		}
-		
+
 		sourceLoader = loader
-		
+
 		parser := &Parser{}
 		nodes, err := parser.Parse(source)
 		if err != nil {
@@ -183,7 +184,7 @@ func (e *Engine) Load(name string) (*Template, error) {
 			source:       source,
 			nodes:        nodes,
 			env:          e.environment,
-			engine:       e,  // Add reference to the engine
+			engine:       e, // Add reference to the engine
 			loader:       sourceLoader,
 			lastModified: lastModified,
 		}
@@ -277,13 +278,54 @@ func (e *Engine) RegisterTemplate(name string, template *Template) {
 	if template.lastModified == 0 {
 		template.lastModified = time.Now().Unix()
 	}
-	
+
 	// Only cache if caching is enabled
 	if e.environment.cache {
 		e.mu.Lock()
 		e.templates[name] = template
 		e.mu.Unlock()
 	}
+}
+
+// CompileTemplate compiles a template for faster rendering
+func (e *Engine) CompileTemplate(name string) (*CompiledTemplate, error) {
+	template, err := e.Load(name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Compile the template
+	return CompileTemplate(template)
+}
+
+// RegisterCompiledTemplate registers a compiled template with the engine
+func (e *Engine) RegisterCompiledTemplate(compiled *CompiledTemplate) error {
+	if compiled == nil {
+		return errors.New("cannot register nil compiled template")
+	}
+
+	// Load the template from the compiled representation
+	template, err := LoadFromCompiled(compiled, e.environment, e)
+	if err != nil {
+		return err
+	}
+
+	// Register the template
+	e.RegisterTemplate(compiled.Name, template)
+
+	return nil
+}
+
+// LoadFromCompiledData loads a template from serialized compiled data
+func (e *Engine) LoadFromCompiledData(data []byte) error {
+	// Deserialize the compiled template
+	compiled, err := DeserializeCompiledTemplate(data)
+	if err != nil {
+		return err
+	}
+
+	// Register the compiled template
+	return e.RegisterCompiledTemplate(compiled)
 }
 
 // AddFilter registers a custom filter function
@@ -309,27 +351,27 @@ func (e *Engine) AddGlobal(name string, value interface{}) {
 // AddExtension registers a Twig extension
 func (e *Engine) AddExtension(extension Extension) {
 	e.environment.extensions = append(e.environment.extensions, extension)
-	
+
 	// Register all filters from the extension
 	for name, filter := range extension.GetFilters() {
 		e.environment.filters[name] = filter
 	}
-	
+
 	// Register all functions from the extension
 	for name, function := range extension.GetFunctions() {
 		e.environment.functions[name] = function
 	}
-	
+
 	// Register all tests from the extension
 	for name, test := range extension.GetTests() {
 		e.environment.tests[name] = test
 	}
-	
+
 	// Register all operators from the extension
 	for name, operator := range extension.GetOperators() {
 		e.environment.operators[name] = operator
 	}
-	
+
 	// Initialize the extension
 	extension.Initialize(e)
 }
@@ -343,7 +385,7 @@ func (e *Engine) CreateExtension(name string) *CustomExtension {
 		Tests:     make(map[string]TestFunc),
 		Operators: make(map[string]OperatorFunc),
 	}
-	
+
 	return extension
 }
 
@@ -399,7 +441,7 @@ func (e *Engine) ParseTemplate(source string) (*Template, error) {
 	if e.Parse != nil {
 		return e.Parse(source)
 	}
-	
+
 	parser := &Parser{}
 	nodes, err := parser.Parse(source)
 	if err != nil {
@@ -433,7 +475,7 @@ func (t *Template) RenderTo(w io.Writer, context map[string]interface{}) error {
 	if context == nil {
 		context = make(map[string]interface{})
 	}
-	
+
 	// Create a render context with access to the engine
 	ctx := &RenderContext{
 		env:          t.env,
@@ -444,8 +486,25 @@ func (t *Template) RenderTo(w io.Writer, context map[string]interface{}) error {
 		extending:    false,
 		currentBlock: nil,
 	}
-	
+
 	return t.nodes.Render(w, ctx)
+}
+
+// Compile compiles the template to a CompiledTemplate
+func (t *Template) Compile() (*CompiledTemplate, error) {
+	return CompileTemplate(t)
+}
+
+// SaveCompiled serializes the compiled template to a byte array
+func (t *Template) SaveCompiled() ([]byte, error) {
+	// Compile the template
+	compiled, err := t.Compile()
+	if err != nil {
+		return nil, err
+	}
+
+	// Serialize the compiled template
+	return SerializeCompiledTemplate(compiled)
 }
 
 // StringBuffer is a simple buffer for string building

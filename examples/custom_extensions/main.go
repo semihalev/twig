@@ -18,12 +18,12 @@ func main() {
 	engine.AddFilter("reverse_words", func(value interface{}, args ...interface{}) (interface{}, error) {
 		s := toString(value)
 		words := strings.Fields(s)
-		
+
 		// Reverse the order of words
 		for i, j := 0, len(words)-1; i < j; i, j = i+1, j-1 {
 			words[i], words[j] = words[j], words[i]
 		}
-		
+
 		return strings.Join(words, " "), nil
 	})
 
@@ -32,13 +32,13 @@ func main() {
 		if len(args) < 2 {
 			return "", nil
 		}
-		
+
 		text := toString(args[0])
 		count, err := toInt(args[1])
 		if err != nil {
 			return "", err
 		}
-		
+
 		return strings.Repeat(text, count), nil
 	})
 
@@ -46,7 +46,7 @@ func main() {
 	engine.RegisterExtension("demo_extension", func(ext *twig.CustomExtension) {
 		// Initialize random seed
 		rand.Seed(time.Now().UnixNano())
-		
+
 		// Add a filter that shuffles characters in a string
 		ext.Filters["shuffle"] = func(value interface{}, args ...interface{}) (interface{}, error) {
 			s := toString(value)
@@ -57,14 +57,14 @@ func main() {
 			})
 			return string(runes), nil
 		}
-		
+
 		// Add a filter that formats a number with a prefix/suffix
 		ext.Filters["format_number"] = func(value interface{}, args ...interface{}) (interface{}, error) {
 			num, err := toFloat64(value)
 			if err != nil {
 				return value, nil
 			}
-			
+
 			// Default format
 			format := "%.2f"
 			if len(args) > 0 {
@@ -72,7 +72,7 @@ func main() {
 					format = fmt
 				}
 			}
-			
+
 			// Default prefix
 			prefix := ""
 			if len(args) > 1 {
@@ -80,7 +80,7 @@ func main() {
 					prefix = pre
 				}
 			}
-			
+
 			// Default suffix
 			suffix := ""
 			if len(args) > 2 {
@@ -88,30 +88,30 @@ func main() {
 					suffix = suf
 				}
 			}
-			
+
 			return prefix + fmt.Sprintf(format, num) + suffix, nil
 		}
-		
+
 		// Add a function that generates a random number between min and max
 		ext.Functions["random_between"] = func(args ...interface{}) (interface{}, error) {
 			if len(args) < 2 {
 				return rand.Intn(100), nil
 			}
-			
+
 			min, err := toInt(args[0])
 			if err != nil {
 				return nil, err
 			}
-			
+
 			max, err := toInt(args[1])
 			if err != nil {
 				return nil, err
 			}
-			
+
 			if max <= min {
 				return nil, fmt.Errorf("max must be greater than min")
 			}
-			
+
 			return min + rand.Intn(max-min+1), nil
 		}
 	})
@@ -157,13 +157,13 @@ Custom Filter and Function Demo:
 	context := map[string]interface{}{
 		"price": 99.99,
 	}
-	
+
 	result, err := template.Render(context)
 	if err != nil {
 		fmt.Println("Error rendering template:", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Println(result)
 }
 
@@ -173,7 +173,7 @@ func toString(v interface{}) string {
 	if v == nil {
 		return ""
 	}
-	
+
 	switch val := v.(type) {
 	case string:
 		return val
@@ -192,7 +192,7 @@ func toInt(v interface{}) (int, error) {
 	if v == nil {
 		return 0, fmt.Errorf("cannot convert nil to int")
 	}
-	
+
 	switch val := v.(type) {
 	case int:
 		return val, nil
@@ -213,7 +213,7 @@ func toFloat64(v interface{}) (float64, error) {
 	if v == nil {
 		return 0, fmt.Errorf("cannot convert nil to float64")
 	}
-	
+
 	switch val := v.(type) {
 	case float64:
 		return val, nil

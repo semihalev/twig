@@ -8,25 +8,25 @@ import (
 
 // Token types
 const (
-	TOKEN_TEXT = iota
-	TOKEN_VAR_START      // {{
-	TOKEN_VAR_END        // }}
-	TOKEN_BLOCK_START    // {%
-	TOKEN_BLOCK_END      // %}
-	TOKEN_COMMENT_START  // {#
-	TOKEN_COMMENT_END    // #}
+	TOKEN_TEXT          = iota
+	TOKEN_VAR_START     // {{
+	TOKEN_VAR_END       // }}
+	TOKEN_BLOCK_START   // {%
+	TOKEN_BLOCK_END     // %}
+	TOKEN_COMMENT_START // {#
+	TOKEN_COMMENT_END   // #}
 	TOKEN_NAME
 	TOKEN_NUMBER
 	TOKEN_STRING
 	TOKEN_OPERATOR
 	TOKEN_PUNCTUATION
 	TOKEN_EOF
-	
+
 	// Whitespace control token types
-	TOKEN_VAR_START_TRIM    // {{-
-	TOKEN_VAR_END_TRIM      // -}}
-	TOKEN_BLOCK_START_TRIM  // {%-
-	TOKEN_BLOCK_END_TRIM    // -%}
+	TOKEN_VAR_START_TRIM   // {{-
+	TOKEN_VAR_END_TRIM     // -}}
+	TOKEN_BLOCK_START_TRIM // {%-
+	TOKEN_BLOCK_END_TRIM   // -%}
 )
 
 // Parser handles parsing Twig templates into node trees
@@ -68,17 +68,16 @@ func (p *Parser) Parse(source string) (Node, error) {
 
 	// Debug tokenization output
 	/*
-	fmt.Println("Tokenized template:")
-	for i, t := range p.tokens {
-		fmt.Printf("Token %d: Type=%d, Value=%q, Line=%d\n", i, t.Type, t.Value, t.Line)
-	}
+		fmt.Println("Tokenized template:")
+		for i, t := range p.tokens {
+			fmt.Printf("Token %d: Type=%d, Value=%q, Line=%d\n", i, t.Type, t.Value, t.Line)
+		}
 	*/
 
 	// Apply whitespace control processing to the tokens to handle
 	// the whitespace trimming between template elements
 	p.tokens = processWhitespaceControl(p.tokens)
-	
-	
+
 	// Parse tokens into nodes
 	nodes, err := p.parseOuterTemplate()
 	if err != nil {
@@ -221,21 +220,21 @@ func (p *Parser) tokenize() ([]Token, error) {
 				if p.cursor+1 < len(p.source) && p.current() == '{' && (p.source[p.cursor+1] == '{' || p.source[p.cursor+1] == '%') {
 					inEmbeddedVar = true
 				}
-				
+
 				// Check for end of embedded variable
 				if inEmbeddedVar && p.cursor+1 < len(p.source) && p.current() == '}' && (p.source[p.cursor+1] == '}' || p.source[p.cursor+1] == '%') {
-					p.cursor += 2  // Skip the closing brackets
+					p.cursor += 2 // Skip the closing brackets
 					inEmbeddedVar = false
 					continue
 				}
-				
+
 				// Skip escaped quote characters
 				if p.current() == '\\' && p.cursor+1 < len(p.source) {
 					// Skip the backslash and the next character (which might be a quote)
 					p.cursor += 2
 					continue
 				}
-				
+
 				if p.current() == '\n' {
 					p.line++
 				}
@@ -311,9 +310,9 @@ func (p *Parser) tokenize() ([]Token, error) {
 		// Handle plain text
 		start := p.cursor
 		for p.cursor < len(p.source) &&
-			!p.matchString("{{-") && !p.matchString("{{") && 
+			!p.matchString("{{-") && !p.matchString("{{") &&
 			!p.matchString("-}}") && !p.matchString("}}") &&
-			!p.matchString("{%-") && !p.matchString("{%") && 
+			!p.matchString("{%-") && !p.matchString("{%") &&
 			!p.matchString("-%}") && !p.matchString("%}") &&
 			!p.matchString("{#") && !p.matchString("#}") {
 			if p.current() == '\n' {
@@ -421,25 +420,25 @@ func fixHTMLAttributes(input string) string {
 		if attrStart == -1 {
 			break // No more attributes with embedded variables
 		}
-		
+
 		attrStart += i // Adjust to full string position
-		
+
 		// Find the end of the attribute value
 		attrEnd := strings.Index(input[attrStart+3:], "}}\"")
 		if attrEnd == -1 {
 			break // No closing variable
 		}
-		
+
 		attrEnd += attrStart + 3 // Adjust to full string position
-		
+
 		// Extract the variable name (between {{ and }})
-		varName := strings.TrimSpace(input[attrStart+3:attrEnd])
-		
+		varName := strings.TrimSpace(input[attrStart+3 : attrEnd])
+
 		// Replace the attribute string with an empty string for now
 		// We'll need to handle this specially in the parsing logic
 		input = input[:attrStart] + "=" + varName + input[attrEnd+2:]
 	}
-	
+
 	return input
 }
 
@@ -531,28 +530,28 @@ func (p *Parser) parseOuterTemplate() ([]Node, error) {
 			// For raw names, punctuation, operators, and literals not inside tags, convert to text
 			// In many languages, the text "true" is a literal boolean, but in our parser it's just a name token
 			// outside of an expression context
-			
+
 			// Special handling for text content words - add spaces between consecutive text tokens
 			// This fixes issues with the spaceless tag's handling of text content
-			if token.Type == TOKEN_NAME && p.tokenIndex+1 < len(p.tokens) && 
-			   p.tokens[p.tokenIndex+1].Type == TOKEN_NAME && 
-			   p.tokens[p.tokenIndex+1].Line == token.Line {
+			if token.Type == TOKEN_NAME && p.tokenIndex+1 < len(p.tokens) &&
+				p.tokens[p.tokenIndex+1].Type == TOKEN_NAME &&
+				p.tokens[p.tokenIndex+1].Line == token.Line {
 				// Look ahead for consecutive name tokens and join them with spaces
 				var textContent strings.Builder
 				textContent.WriteString(token.Value)
-				
+
 				currentLine := token.Line
 				p.tokenIndex++ // Skip the first token as we've already added it
-				
+
 				// Collect consecutive name tokens on the same line
-				for p.tokenIndex < len(p.tokens) && 
+				for p.tokenIndex < len(p.tokens) &&
 					p.tokens[p.tokenIndex].Type == TOKEN_NAME &&
 					p.tokens[p.tokenIndex].Line == currentLine {
 					textContent.WriteString(" ") // Add space between words
 					textContent.WriteString(p.tokens[p.tokenIndex].Value)
 					p.tokenIndex++
 				}
-				
+
 				nodes = append(nodes, NewTextNode(textContent.String(), token.Line))
 			} else {
 				// Regular handling for single text tokens
@@ -577,10 +576,10 @@ func (p *Parser) parseExpression() (Node, error) {
 	}
 
 	// Now check for filter operator (|)
-	if p.tokenIndex < len(p.tokens) && 
+	if p.tokenIndex < len(p.tokens) &&
 		p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 		p.tokens[p.tokenIndex].Value == "|" {
-		
+
 		expr, err = p.parseFilters(expr)
 		if err != nil {
 			return nil, err
@@ -588,62 +587,62 @@ func (p *Parser) parseExpression() (Node, error) {
 	}
 
 	// Check for binary operators (and, or, ==, !=, <, >, etc.)
-	if p.tokenIndex < len(p.tokens) && 
-		(p.tokens[p.tokenIndex].Type == TOKEN_OPERATOR || 
-		 (p.tokens[p.tokenIndex].Type == TOKEN_NAME && 
-		  (p.tokens[p.tokenIndex].Value == "and" || 
-		   p.tokens[p.tokenIndex].Value == "or" ||
-		   p.tokens[p.tokenIndex].Value == "in" ||
-		   p.tokens[p.tokenIndex].Value == "not" ||
-		   p.tokens[p.tokenIndex].Value == "is" ||
-		   p.tokens[p.tokenIndex].Value == "matches" ||
-		   p.tokens[p.tokenIndex].Value == "starts" ||
-		   p.tokens[p.tokenIndex].Value == "ends"))) {
-		
+	if p.tokenIndex < len(p.tokens) &&
+		(p.tokens[p.tokenIndex].Type == TOKEN_OPERATOR ||
+			(p.tokens[p.tokenIndex].Type == TOKEN_NAME &&
+				(p.tokens[p.tokenIndex].Value == "and" ||
+					p.tokens[p.tokenIndex].Value == "or" ||
+					p.tokens[p.tokenIndex].Value == "in" ||
+					p.tokens[p.tokenIndex].Value == "not" ||
+					p.tokens[p.tokenIndex].Value == "is" ||
+					p.tokens[p.tokenIndex].Value == "matches" ||
+					p.tokens[p.tokenIndex].Value == "starts" ||
+					p.tokens[p.tokenIndex].Value == "ends"))) {
+
 		expr, err = p.parseBinaryExpression(expr)
 		if err != nil {
 			return nil, err
 		}
 	}
-	
+
 	// Check for ternary operator (? :)
-	if p.tokenIndex < len(p.tokens) && 
+	if p.tokenIndex < len(p.tokens) &&
 		p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 		p.tokens[p.tokenIndex].Value == "?" {
-		
+
 		return p.parseConditionalExpression(expr)
 	}
-	
+
 	return expr, nil
 }
 
 // Parse ternary conditional expression (condition ? true_expr : false_expr)
 func (p *Parser) parseConditionalExpression(condition Node) (Node, error) {
 	line := p.tokens[p.tokenIndex].Line
-	
+
 	// Skip the "?" token
 	p.tokenIndex++
-	
+
 	// Parse the "true" expression
 	trueExpr, err := p.parseExpression()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Expect ":" token
-	if p.tokenIndex >= len(p.tokens) || 
-		p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION || 
+	if p.tokenIndex >= len(p.tokens) ||
+		p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
 		p.tokens[p.tokenIndex].Value != ":" {
 		return nil, fmt.Errorf("expected ':' after true expression in conditional at line %d", line)
 	}
 	p.tokenIndex++ // Skip ":"
-	
+
 	// Parse the "false" expression
 	falseExpr, err := p.parseExpression()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Create a conditional node
 	return &ConditionalNode{
 		ExpressionNode: ExpressionNode{
@@ -686,11 +685,11 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 
 	case TOKEN_NAME:
 		p.tokenIndex++
-		
+
 		// Store the variable name for function calls
 		varName := token.Value
 		varLine := token.Line
-		
+
 		// Special handling for boolean literals and null
 		if varName == "true" {
 			return NewLiteralNode(true, varLine), nil
@@ -701,21 +700,21 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 		}
 
 		// Check if this is a function call (name followed by opening parenthesis)
-		if p.tokenIndex < len(p.tokens) && 
-			p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION && 
+		if p.tokenIndex < len(p.tokens) &&
+			p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 			p.tokens[p.tokenIndex].Value == "(" {
-			
+
 			// This is a function call
 			p.tokenIndex++ // Skip the opening parenthesis
-			
+
 			// Parse arguments list
 			var args []Node
-			
+
 			// If there are arguments (not empty parentheses)
-			if p.tokenIndex < len(p.tokens) && 
-				!(p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION && 
-				  p.tokens[p.tokenIndex].Value == ")") {
-				
+			if p.tokenIndex < len(p.tokens) &&
+				!(p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
+					p.tokens[p.tokenIndex].Value == ")") {
+
 				for {
 					// Parse each argument expression
 					argExpr, err := p.parseExpression()
@@ -723,32 +722,32 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 						return nil, err
 					}
 					args = append(args, argExpr)
-					
+
 					// Check for comma separator between arguments
-					if p.tokenIndex < len(p.tokens) && 
-						p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION && 
+					if p.tokenIndex < len(p.tokens) &&
+						p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 						p.tokens[p.tokenIndex].Value == "," {
 						p.tokenIndex++ // Skip comma
 						continue
 					}
-					
+
 					// No comma, so must be end of argument list
 					break
 				}
 			}
-			
+
 			// Expect closing parenthesis
-			if p.tokenIndex >= len(p.tokens) || 
-				p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION || 
+			if p.tokenIndex >= len(p.tokens) ||
+				p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
 				p.tokens[p.tokenIndex].Value != ")" {
 				return nil, fmt.Errorf("expected closing parenthesis after function arguments at line %d", varLine)
 			}
 			p.tokenIndex++ // Skip closing parenthesis
-			
+
 			// Create and return function node
 			return NewFunctionNode(varName, args, varLine), nil
 		}
-		
+
 		// If not a function call, it's a regular variable
 		var result Node = NewVariableNode(varName, varLine)
 
@@ -770,13 +769,13 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 		}
 
 		return result, nil
-		
+
 	case TOKEN_PUNCTUATION:
 		// Handle array literals [1, 2, 3]
 		if token.Value == "[" {
 			return p.parseArrayExpression()
 		}
-		
+
 		// Handle parenthesized expressions
 		if token.Value == "(" {
 			p.tokenIndex++ // Skip "("
@@ -784,22 +783,22 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 			if err != nil {
 				return nil, err
 			}
-			
+
 			// Expect closing parenthesis
-			if p.tokenIndex >= len(p.tokens) || 
-				p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION || 
+			if p.tokenIndex >= len(p.tokens) ||
+				p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
 				p.tokens[p.tokenIndex].Value != ")" {
 				return nil, fmt.Errorf("expected closing parenthesis at line %d", token.Line)
 			}
 			p.tokenIndex++ // Skip ")"
-			
+
 			return expr, nil
 		}
 
 	default:
 		return nil, fmt.Errorf("unexpected token in expression at line %d", token.Line)
 	}
-	
+
 	return nil, fmt.Errorf("unexpected token in expression at line %d", token.Line)
 }
 
@@ -807,18 +806,18 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 func (p *Parser) parseArrayExpression() (Node, error) {
 	// Save the line number for error reporting
 	line := p.tokens[p.tokenIndex].Line
-	
+
 	// Skip the opening bracket
 	p.tokenIndex++
-	
+
 	// Parse the array items
 	var items []Node
-	
+
 	// Check if there are any items
-	if p.tokenIndex < len(p.tokens) && 
-		!(p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION && 
-		  p.tokens[p.tokenIndex].Value == "]") {
-		
+	if p.tokenIndex < len(p.tokens) &&
+		!(p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
+			p.tokens[p.tokenIndex].Value == "]") {
+
 		for {
 			// Parse each item expression
 			itemExpr, err := p.parseExpression()
@@ -826,28 +825,28 @@ func (p *Parser) parseArrayExpression() (Node, error) {
 				return nil, err
 			}
 			items = append(items, itemExpr)
-			
+
 			// Check for comma separator between items
-			if p.tokenIndex < len(p.tokens) && 
-				p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION && 
+			if p.tokenIndex < len(p.tokens) &&
+				p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 				p.tokens[p.tokenIndex].Value == "," {
 				p.tokenIndex++ // Skip comma
 				continue
 			}
-			
+
 			// No comma, so must be end of array
 			break
 		}
 	}
-	
+
 	// Expect closing bracket
-	if p.tokenIndex >= len(p.tokens) || 
-		p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION || 
+	if p.tokenIndex >= len(p.tokens) ||
+		p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
 		p.tokens[p.tokenIndex].Value != "]" {
 		return nil, fmt.Errorf("expected closing bracket after array items at line %d", line)
 	}
 	p.tokenIndex++ // Skip closing bracket
-	
+
 	// Create array node
 	return &ArrayNode{
 		ExpressionNode: ExpressionNode{
@@ -863,35 +862,35 @@ func (p *Parser) parseFilters(node Node) (Node, error) {
 	line := p.tokens[p.tokenIndex].Line
 
 	// Loop to handle multiple filters (e.g. var|filter1|filter2)
-	for p.tokenIndex < len(p.tokens) && 
+	for p.tokenIndex < len(p.tokens) &&
 		p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 		p.tokens[p.tokenIndex].Value == "|" {
-		
+
 		p.tokenIndex++ // Skip the | token
-		
+
 		// Expect filter name
 		if p.tokenIndex >= len(p.tokens) || p.tokens[p.tokenIndex].Type != TOKEN_NAME {
 			return nil, fmt.Errorf("expected filter name at line %d", line)
 		}
-		
+
 		filterName := p.tokens[p.tokenIndex].Value
 		p.tokenIndex++
-		
+
 		// Check for filter arguments
 		var args []Node
-		
+
 		// If there are arguments in parentheses
-		if p.tokenIndex < len(p.tokens) && 
-			p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION && 
+		if p.tokenIndex < len(p.tokens) &&
+			p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 			p.tokens[p.tokenIndex].Value == "(" {
-			
+
 			p.tokenIndex++ // Skip opening parenthesis
-			
+
 			// Parse arguments
-			if p.tokenIndex < len(p.tokens) && 
-				!(p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION && 
-				  p.tokens[p.tokenIndex].Value == ")") {
-				
+			if p.tokenIndex < len(p.tokens) &&
+				!(p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
+					p.tokens[p.tokenIndex].Value == ")") {
+
 				for {
 					// Parse each argument expression
 					argExpr, err := p.parseExpression()
@@ -899,29 +898,29 @@ func (p *Parser) parseFilters(node Node) (Node, error) {
 						return nil, err
 					}
 					args = append(args, argExpr)
-					
+
 					// Check for comma separator
-					if p.tokenIndex < len(p.tokens) && 
-						p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION && 
+					if p.tokenIndex < len(p.tokens) &&
+						p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 						p.tokens[p.tokenIndex].Value == "," {
 						p.tokenIndex++ // Skip comma
 						continue
 					}
-					
+
 					// No comma, so end of argument list
 					break
 				}
 			}
-			
+
 			// Expect closing parenthesis
-			if p.tokenIndex >= len(p.tokens) || 
-				p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION || 
+			if p.tokenIndex >= len(p.tokens) ||
+				p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
 				p.tokens[p.tokenIndex].Value != ")" {
 				return nil, fmt.Errorf("expected closing parenthesis after filter arguments at line %d", line)
 			}
 			p.tokenIndex++ // Skip closing parenthesis
 		}
-		
+
 		// Create a new FilterNode
 		node = &FilterNode{
 			ExpressionNode: ExpressionNode{
@@ -933,7 +932,7 @@ func (p *Parser) parseFilters(node Node) (Node, error) {
 			args:   args,
 		}
 	}
-	
+
 	return node, nil
 }
 
@@ -942,29 +941,29 @@ func (p *Parser) parseBinaryExpression(left Node) (Node, error) {
 	token := p.tokens[p.tokenIndex]
 	operator := token.Value
 	line := token.Line
-	
+
 	// Process multi-word operators
 	if token.Type == TOKEN_NAME {
 		// Handle 'not in' operator
-		if token.Value == "not" && p.tokenIndex+1 < len(p.tokens) && 
-			p.tokens[p.tokenIndex+1].Type == TOKEN_NAME && 
+		if token.Value == "not" && p.tokenIndex+1 < len(p.tokens) &&
+			p.tokens[p.tokenIndex+1].Type == TOKEN_NAME &&
 			p.tokens[p.tokenIndex+1].Value == "in" {
 			operator = "not in"
 			p.tokenIndex += 2 // Skip both 'not' and 'in'
-		} else if token.Value == "is" && p.tokenIndex+1 < len(p.tokens) && 
-			p.tokens[p.tokenIndex+1].Type == TOKEN_NAME && 
+		} else if token.Value == "is" && p.tokenIndex+1 < len(p.tokens) &&
+			p.tokens[p.tokenIndex+1].Type == TOKEN_NAME &&
 			p.tokens[p.tokenIndex+1].Value == "not" {
 			// Handle 'is not' operator
 			operator = "is not"
 			p.tokenIndex += 2 // Skip both 'is' and 'not'
-		} else if token.Value == "starts" && p.tokenIndex+1 < len(p.tokens) && 
-			p.tokens[p.tokenIndex+1].Type == TOKEN_NAME && 
+		} else if token.Value == "starts" && p.tokenIndex+1 < len(p.tokens) &&
+			p.tokens[p.tokenIndex+1].Type == TOKEN_NAME &&
 			p.tokens[p.tokenIndex+1].Value == "with" {
 			// Handle 'starts with' operator
 			operator = "starts with"
 			p.tokenIndex += 2 // Skip both 'starts' and 'with'
-		} else if token.Value == "ends" && p.tokenIndex+1 < len(p.tokens) && 
-			p.tokens[p.tokenIndex+1].Type == TOKEN_NAME && 
+		} else if token.Value == "ends" && p.tokenIndex+1 < len(p.tokens) &&
+			p.tokens[p.tokenIndex+1].Type == TOKEN_NAME &&
 			p.tokens[p.tokenIndex+1].Value == "with" {
 			// Handle 'ends with' operator
 			operator = "ends with"
@@ -977,29 +976,29 @@ func (p *Parser) parseBinaryExpression(left Node) (Node, error) {
 		// Regular operators like +, -, *, /, etc.
 		p.tokenIndex++ // Skip the operator token
 	}
-	
+
 	// Handle 'is' followed by a test
 	if operator == "is" || operator == "is not" {
 		// Check if this is a test
 		if p.tokenIndex < len(p.tokens) && p.tokens[p.tokenIndex].Type == TOKEN_NAME {
 			testName := p.tokens[p.tokenIndex].Value
 			p.tokenIndex++ // Skip the test name
-			
+
 			// Parse test arguments if any
 			var args []Node
-			
+
 			// If there's an opening parenthesis, parse arguments
-			if p.tokenIndex < len(p.tokens) && 
-				p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION && 
+			if p.tokenIndex < len(p.tokens) &&
+				p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 				p.tokens[p.tokenIndex].Value == "(" {
-				
+
 				p.tokenIndex++ // Skip opening parenthesis
-				
+
 				// Parse arguments
-				if p.tokenIndex < len(p.tokens) && 
-					!(p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION && 
-					  p.tokens[p.tokenIndex].Value == ")") {
-					
+				if p.tokenIndex < len(p.tokens) &&
+					!(p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
+						p.tokens[p.tokenIndex].Value == ")") {
+
 					for {
 						// Parse each argument expression
 						argExpr, err := p.parseExpression()
@@ -1007,29 +1006,29 @@ func (p *Parser) parseBinaryExpression(left Node) (Node, error) {
 							return nil, err
 						}
 						args = append(args, argExpr)
-						
+
 						// Check for comma separator
-						if p.tokenIndex < len(p.tokens) && 
-							p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION && 
+						if p.tokenIndex < len(p.tokens) &&
+							p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 							p.tokens[p.tokenIndex].Value == "," {
 							p.tokenIndex++ // Skip comma
 							continue
 						}
-						
+
 						// No comma, so end of argument list
 						break
 					}
 				}
-				
+
 				// Expect closing parenthesis
-				if p.tokenIndex >= len(p.tokens) || 
-					p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION || 
+				if p.tokenIndex >= len(p.tokens) ||
+					p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
 					p.tokens[p.tokenIndex].Value != ")" {
 					return nil, fmt.Errorf("expected closing parenthesis after test arguments at line %d", line)
 				}
 				p.tokenIndex++ // Skip closing parenthesis
 			}
-			
+
 			// Create the test node
 			test := &TestNode{
 				ExpressionNode: ExpressionNode{
@@ -1040,7 +1039,7 @@ func (p *Parser) parseBinaryExpression(left Node) (Node, error) {
 				test: testName,
 				args: args,
 			}
-			
+
 			// If it's a negated test (is not), create a unary 'not' node
 			if operator == "is not" {
 				return &UnaryNode{
@@ -1052,19 +1051,19 @@ func (p *Parser) parseBinaryExpression(left Node) (Node, error) {
 					node:     test,
 				}, nil
 			}
-			
+
 			return test, nil
 		}
 	}
-	
+
 	// If we get here, we have a regular binary operator
-	
+
 	// For regular binary operators, parse the right operand
 	right, err := p.parseExpression()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return NewBinaryNode(operator, left, right, line), nil
 }
 
@@ -1080,9 +1079,9 @@ func (p *Parser) parseIf(parser *Parser) (Node, error) {
 	}
 
 	// Expect the block end token (either regular or whitespace-trimming variant)
-	if parser.tokenIndex >= len(parser.tokens) || 
-	   (parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END && 
-		parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
+	if parser.tokenIndex >= len(parser.tokens) ||
+		(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END &&
+			parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
 		return nil, fmt.Errorf("expected block end after if condition at line %d", ifLine)
 	}
 	parser.tokenIndex++
@@ -1774,42 +1773,42 @@ func (p *Parser) parseEndTag(parser *Parser) (Node, error) {
 func (p *Parser) parseSpaceless(parser *Parser) (Node, error) {
 	// Get the line number of the spaceless token
 	spacelessLine := parser.tokens[parser.tokenIndex-2].Line
-	
+
 	// Expect the block end token
-	if parser.tokenIndex >= len(parser.tokens) || 
-	   (parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END && 
-	    parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
+	if parser.tokenIndex >= len(parser.tokens) ||
+		(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END &&
+			parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
 		return nil, fmt.Errorf("expected block end token after spaceless at line %d", spacelessLine)
 	}
 	parser.tokenIndex++
-	
+
 	// Parse the spaceless body
 	spacelessBody, err := parser.parseOuterTemplate()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Expect endspaceless tag
 	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_START {
 		return nil, fmt.Errorf("expected endspaceless tag at line %d", spacelessLine)
 	}
 	parser.tokenIndex++
-	
+
 	// Expect the endspaceless token
-	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_NAME || 
-	   parser.tokens[parser.tokenIndex].Value != "endspaceless" {
+	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_NAME ||
+		parser.tokens[parser.tokenIndex].Value != "endspaceless" {
 		return nil, fmt.Errorf("expected endspaceless token at line %d", parser.tokens[parser.tokenIndex].Line)
 	}
 	parser.tokenIndex++
-	
+
 	// Expect the block end token
-	if parser.tokenIndex >= len(parser.tokens) || 
-	   (parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END && 
-	    parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
+	if parser.tokenIndex >= len(parser.tokens) ||
+		(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END &&
+			parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
 		return nil, fmt.Errorf("expected block end token after endspaceless at line %d", parser.tokens[parser.tokenIndex].Line)
 	}
 	parser.tokenIndex++
-	
+
 	// Create and return the spaceless node
 	return NewSpacelessNode(spacelessBody, spacelessLine), nil
 }

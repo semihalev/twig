@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Welcome</title>
+</head>
+<body>
+    <h1>Hello, {{ name }}!</h1>
+    <p>Welcome to our website. We're glad you're here.</p>
+    
+    {% if items|length > 0 %}
+    <h2>Popular Items</h2>
+    <ul>
+        {% for item in items %}
+        <li>{{ item|capitalize }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    
+    <p>Thank you for visiting!</p>
+</body>
+</html>

@@ -67,17 +67,24 @@
    - Improved text handling to preserve spaces between words
    - Added tests for all whitespace control features
 
+## Recent Improvements
+
+4. **Template Compilation**
+   - Implemented a compiled template format for faster rendering
+   - Added pre-compilation capabilities for production use
+   - Created a CompiledLoader for loading and saving compiled templates
+   - Added support for auto-reload of compiled templates
+   - Added benchmark tests comparing direct vs compiled template rendering
+   - Created example application demonstrating template compilation workflow
+   - Updated documentation with detailed information about the compilation feature
+
 ## Future Improvements
 
-2. **More Tests**
+1. **More Tests**
    - Add more comprehensive tests for edge cases
    - Add more benchmarks for different template scenarios
 
-3. **Error Handling**
+2. **Error Handling**
    - Improve error messages for filter-related issues
    - Add better debugging support
-
-4. **Template Compilation**
-   - Implement a compiled template format for even faster rendering
-   - Add the ability to pre-compile templates for production use
 

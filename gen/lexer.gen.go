@@ -39,12 +39,12 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 			l.line++
 			l.col = 1
 			l.pos++
-			
+
 		case l.isWhitespace(l.source[l.pos]):
 			// Skip whitespace
 			l.col++
 			l.pos++
-			
+
 		case l.match("{{"):
 			// Variable start
 			l.addToken(T_VAR_START, "{{")
@@ -52,12 +52,12 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 
 			// After variable start, scan for identifiers, operators, etc.
 			l.scanExpressionTokens()
-			
+
 		case l.match("}}"):
 			// Variable end
 			l.addToken(T_VAR_END, "}}")
 			l.advance(2)
-			
+
 		case l.match("{%"):
 			// Block start
 			l.addToken(T_BLOCK_START, "{%")
@@ -65,17 +65,17 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 
 			// After block start, scan for identifiers, operators, etc.
 			l.scanExpressionTokens()
-			
+
 		case l.match("%}"):
 			// Block end
 			l.addToken(T_BLOCK_END, "%}")
 			l.advance(2)
-			
+
 		default:
 			// Text content (anything that's not a special delimiter)
 			start := l.pos
-			for l.pos < len(l.source) && 
-				!l.match("{{") && !l.match("}}") && 
+			for l.pos < len(l.source) &&
+				!l.match("{{") && !l.match("}}") &&
 				!l.match("{%") && !l.match("%}") {
 				if l.source[l.pos] == '\n' {
 					l.line++
@@ -85,7 +85,7 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 				}
 				l.pos++
 			}
-			
+
 			if start != l.pos {
 				l.addToken(T_TEXT, l.source[start:l.pos])
 			} else {
@@ -98,7 +98,7 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 
 	// Add EOF token
 	l.addToken(T_EOF, "")
-	
+
 	return l.tokens, nil
 }
 
@@ -110,9 +110,9 @@ func (l *Lexer) scanExpressionTokens() {
 	}
 
 	// Continue scanning until we reach the end tag
-	for l.pos < len(l.source) && 
+	for l.pos < len(l.source) &&
 		!l.match("}}") && !l.match("%}") {
-		
+
 		// Skip whitespace
 		if l.isWhitespace(l.source[l.pos]) {
 			l.advance(1)
@@ -152,18 +152,18 @@ func (l *Lexer) scanExpressionTokens() {
 // scanIdentifierOrKeyword scans an identifier or keyword
 func (l *Lexer) scanIdentifierOrKeyword() {
 	start := l.pos
-	
+
 	// First character is already checked to be alpha
 	l.advance(1)
-	
+
 	// Keep scanning alphanumeric and underscore characters
 	for l.pos < len(l.source) && (l.isAlphaNumeric(l.source[l.pos]) || l.source[l.pos] == '_') {
 		l.advance(1)
 	}
-	
+
 	// Extract the identifier
 	text := l.source[start:l.pos]
-	
+
 	// Check if it's a keyword
 	switch text {
 	case "macro":
@@ -194,24 +194,24 @@ func (l *Lexer) scanIdentifierOrKeyword() {
 // scanNumber scans a number (integer or float)
 func (l *Lexer) scanNumber() {
 	start := l.pos
-	
+
 	// Keep scanning digits
 	for l.pos < len(l.source) && l.isDigit(l.source[l.pos]) {
 		l.advance(1)
 	}
-	
+
 	// Look for fractional part
-	if l.pos < len(l.source) && l.source[l.pos] == '.' && 
+	if l.pos < len(l.source) && l.source[l.pos] == '.' &&
 		l.pos+1 < len(l.source) && l.isDigit(l.source[l.pos+1]) {
 		// Consume the dot
 		l.advance(1)
-		
+
 		// Consume digits after the dot
 		for l.pos < len(l.source) && l.isDigit(l.source[l.pos]) {
 			l.advance(1)
 		}
 	}
-	
+
 	l.addToken(T_NUMBER, l.source[start:l.pos])
 }
 
@@ -219,10 +219,10 @@ func (l *Lexer) scanNumber() {
 func (l *Lexer) scanString() {
 	start := l.pos
 	quote := l.source[l.pos] // ' or "
-	
+
 	// Consume the opening quote
 	l.advance(1)
-	
+
 	// Keep scanning until closing quote or end of file
 	for l.pos < len(l.source) && l.source[l.pos] != quote {
 		// Handle escape sequence
@@ -232,12 +232,12 @@ func (l *Lexer) scanString() {
 			l.advance(1)
 		}
 	}
-	
+
 	// Consume the closing quote
 	if l.pos < len(l.source) {
 		l.advance(1)
 	}
-	
+
 	l.addToken(T_STRING, l.source[start:l.pos])
 }
 
@@ -245,8 +245,8 @@ func (l *Lexer) scanString() {
 func (l *Lexer) scanOperator() {
 	// Check for multi-character operators first
 	if l.pos+1 < len(l.source) {
-		twoChars := l.source[l.pos:l.pos+2]
-		
+		twoChars := l.source[l.pos : l.pos+2]
+
 		switch twoChars {
 		case "==", "!=", ">=", "<=", "&&", "||", "+=", "-=", "*=", "/=", "%=", "~=":
 			l.addToken(T_OPERATOR, twoChars)
@@ -254,7 +254,7 @@ func (l *Lexer) scanOperator() {
 			return
 		}
 	}
-	
+
 	// Single character operators
 	l.addToken(T_OPERATOR, string(l.source[l.pos]))
 	l.advance(1)
@@ -275,13 +275,13 @@ func (l *Lexer) isAlphaNumeric(c byte) bool {
 }
 
 func (l *Lexer) isPunctuation(c byte) bool {
-	return c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}' || 
-		   c == ',' || c == '.' || c == ':' || c == ';'
+	return c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}' ||
+		c == ',' || c == '.' || c == ':' || c == ';'
 }
 
 func (l *Lexer) isOperator(c byte) bool {
-	return c == '+' || c == '-' || c == '*' || c == '/' || c == '%' || c == '=' || 
-		   c == '<' || c == '>' || c == '!' || c == '&' || c == '|' || c == '~'
+	return c == '+' || c == '-' || c == '*' || c == '/' || c == '%' || c == '=' ||
+		c == '<' || c == '>' || c == '!' || c == '&' || c == '|' || c == '~'
 }
 
 // Helper methods

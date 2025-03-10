@@ -4,7 +4,6 @@ import (
 	"testing"
 )
 
-
 func TestWhitespaceControl(t *testing.T) {
 	testCases := []struct {
 		name     string
@@ -28,7 +27,7 @@ func TestWhitespaceControl(t *testing.T) {
 		},
 		{
 			name:     "Block tag whitespace control",
-				template: "Hello   {%- if true %}Yes{% endif -%}   World", // Original test case
+			template: "Hello   {%- if true %}Yes{% endif -%}   World", // Original test case
 			expected: "HelloYesWorld",
 		},
 		{
@@ -46,22 +45,22 @@ func TestWhitespaceControl(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			engine := New()
-			
+
 			// Register the template
 			err := engine.RegisterString("test.twig", tc.template)
 			if err != nil {
 				t.Fatalf("Failed to register template: %v", err)
 			}
-			
+
 			// Render with context
 			result, err := engine.Render("test.twig", map[string]interface{}{
 				"name": "World",
 			})
-			
+
 			if err != nil {
 				t.Fatalf("Failed to render template: %v", err)
 			}
-			
+
 			if result != tc.expected {
 				t.Errorf("Expected: %q, got: %q for template: %q", tc.expected, result, tc.template)
 			}
@@ -111,23 +110,23 @@ func TestSpacelessTag(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			engine := New()
-			
+
 			// Register the template
 			err := engine.RegisterString("test.twig", tc.template)
 			if err != nil {
 				t.Fatalf("Failed to register template: %v", err)
 			}
-			
+
 			// Render with context
 			result, err := engine.Render("test.twig", map[string]interface{}{
 				"greeting": "Hello",
 				"name":     "World",
 			})
-			
+
 			if err != nil {
 				t.Fatalf("Failed to render template: %v", err)
 			}
-			
+
 			if result != tc.expected {
 				t.Errorf("Expected: %q, got: %q for template: %q", tc.expected, result, tc.template)
 			}

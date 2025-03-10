@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Profile</title>
+</head>
+<body>
+    <div class="profile">
+        <h1>User Profile</h1>
+        
+        {% if user is defined %}
+            <div class="user-info">
+                <p><strong>Username:</strong> {{ user.username }}</p>
+                <p><strong>Email:</strong> {{ user.email }}</p>
+                
+                {% if user.username starts with "admin" %}
+                    <div class="admin-badge">Administrator</div>
+                {% endif %}
+            </div>
+        {% else %}
+            <div class="not-logged-in">
+                <p>You are not logged in. Please <a href="/login">login</a> to view your profile.</p>
+            </div>
+        {% endif %}
+        
+        <div class="recent-activity">
+            <h2>Recent Activity</h2>
+            
+            {% if items|length > 0 %}
+                <ul>
+                    {% for item in items|slice(0, 3) %}
+                        <li>You viewed {{ item }}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No recent activity.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
