@@ -9,11 +9,14 @@ import (
 
 // RenderContext holds the state during template rendering
 type RenderContext struct {
-	env     *Environment
-	context map[string]interface{}
-	blocks  map[string][]Node
-	macros  map[string]Node
-	parent  *RenderContext
+	env          *Environment
+	context      map[string]interface{}
+	blocks       map[string][]Node
+	macros       map[string]Node
+	parent       *RenderContext
+	engine       *Engine         // Reference to engine for loading templates
+	extending    bool            // Whether this template extends another
+	currentBlock *BlockNode      // Current block being rendered (for parent() function)
 }
 
 // Error types
@@ -45,7 +48,9 @@ func (ctx *RenderContext) GetVariable(name string) (interface{}, error) {
 		return ctx.parent.GetVariable(name)
 	}
 	
-	return nil, fmt.Errorf("%w: %s", ErrUndefinedVar, name)
+	// Return nil with no error for undefined variables
+	// Twig treats undefined variables as empty strings during rendering
+	return nil, nil
 }
 
 // SetVariable sets a variable in the context

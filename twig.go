@@ -25,6 +25,7 @@ type Template struct {
 	source string
 	nodes  Node
 	env    *Environment
+	engine *Engine       // Reference back to the engine for loading parent templates
 }
 
 // Environment holds configuration and context for template rendering
@@ -119,6 +120,7 @@ func (e *Engine) Load(name string) (*Template, error) {
 			source: source,
 			nodes:  nodes,
 			env:    e.environment,
+			engine: e,  // Add reference to the engine
 		}
 
 		e.mu.Lock()
@@ -148,6 +150,7 @@ func (e *Engine) ParseTemplate(source string) (*Template, error) {
 		source: source,
 		nodes:  nodes,
 		env:    e.environment,
+		engine: e,
 	}
 
 	return template, nil
@@ -169,12 +172,15 @@ func (t *Template) RenderTo(w io.Writer, context map[string]interface{}) error {
 		context = make(map[string]interface{})
 	}
 	
-	// Create a simple render context 
+	// Create a render context with access to the engine
 	ctx := &RenderContext{
-		env:     t.env,
-		context: context,
-		blocks:  make(map[string][]Node),
-		macros:  make(map[string]Node),
+		env:          t.env,
+		context:      context,
+		blocks:       make(map[string][]Node),
+		macros:       make(map[string]Node),
+		engine:       t.engine,
+		extending:    false,
+		currentBlock: nil,
 	}
 	
 	return t.nodes.Render(w, ctx)
