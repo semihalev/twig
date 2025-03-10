@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // RenderContext holds the state during template rendering
@@ -21,6 +22,55 @@ type RenderContext struct {
 	engine       *Engine    // Reference to engine for loading templates
 	extending    bool       // Whether this template extends another
 	currentBlock *BlockNode // Current block being rendered (for parent() function)
+}
+
+// renderContextPool is a sync.Pool for RenderContext objects
+var renderContextPool = sync.Pool{
+	New: func() interface{} {
+		return &RenderContext{
+			context: make(map[string]interface{}),
+			blocks:  make(map[string][]Node),
+			macros:  make(map[string]Node),
+		}
+	},
+}
+
+// NewRenderContext gets a RenderContext from the pool and initializes it
+func NewRenderContext(env *Environment, context map[string]interface{}, engine *Engine) *RenderContext {
+	ctx := renderContextPool.Get().(*RenderContext)
+	
+	// Reset and initialize the context
+	for k := range ctx.context {
+		delete(ctx.context, k)
+	}
+	for k := range ctx.blocks {
+		delete(ctx.blocks, k)
+	}
+	for k := range ctx.macros {
+		delete(ctx.macros, k)
+	}
+	
+	ctx.env = env
+	ctx.engine = engine
+	ctx.extending = false
+	ctx.currentBlock = nil
+	ctx.parent = nil
+	
+	// Copy the context values
+	if context != nil {
+		for k, v := range context {
+			ctx.context[k] = v
+		}
+	}
+	
+	return ctx
+}
+
+// Release returns the RenderContext to the pool
+func (ctx *RenderContext) Release() {
+	// Don't release parent contexts - they'll be released separately
+	ctx.parent = nil
+	renderContextPool.Put(ctx)
 }
 
 // Error types
@@ -466,13 +516,35 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 	}
 }
 
+// attributeCacheKey is used as a key for the attribute cache
+type attributeCacheKey struct {
+	typ  reflect.Type
+	attr string
+}
+
+// attributeCacheEntry represents a cached attribute lookup result
+type attributeCacheEntry struct {
+	fieldIndex  int  // Index of the field (-1 if not a field)
+	isMethod    bool // Whether this is a method
+	methodIndex int  // Index of the method (-1 if not a method)
+	ptrMethod   bool // Whether the method is on the pointer type
+}
+
+// attributeCache caches attribute lookups by type and attribute name
+var attributeCache = struct {
+	sync.RWMutex
+	m map[attributeCacheKey]attributeCacheEntry
+}{
+	m: make(map[attributeCacheKey]attributeCacheEntry),
+}
+
 // getAttribute gets an attribute from an object
 func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{}, error) {
 	if obj == nil {
 		return nil, fmt.Errorf("%w: cannot get attribute %s of nil", ErrInvalidAttribute, attr)
 	}
 
-	// Handle maps
+	// Fast path for maps
 	if objMap, ok := obj.(map[string]interface{}); ok {
 		if value, exists := objMap[attr]; exists {
 			return value, nil
@@ -480,49 +552,108 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 		return nil, fmt.Errorf("%w: map has no key %s", ErrInvalidAttribute, attr)
 	}
 
-	// Use reflection for structs
+	// Get the reflect.Value and type for the object
 	objValue := reflect.ValueOf(obj)
-
+	origType := objValue.Type()
+	
 	// Handle pointer indirection
-	if objValue.Kind() == reflect.Ptr {
+	isPtr := origType.Kind() == reflect.Ptr
+	if isPtr {
 		objValue = objValue.Elem()
 	}
-
-	// Handle structs
-	if objValue.Kind() == reflect.Struct {
-		// Try field access first
-		field := objValue.FieldByName(attr)
+	
+	// Only use caching for struct types
+	if objValue.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("%w: %s is not a struct or map", ErrInvalidAttribute, attr)
+	}
+	
+	objType := objValue.Type()
+	
+	// Create a cache key
+	key := attributeCacheKey{
+		typ:  objType,
+		attr: attr,
+	}
+	
+	// Check if we have this lookup cached
+	attributeCache.RLock()
+	entry, found := attributeCache.m[key]
+	attributeCache.RUnlock()
+	
+	// If not found, perform the reflection lookup and cache the result
+	if !found {
+		entry = attributeCacheEntry{
+			fieldIndex:  -1,
+			methodIndex: -1,
+		}
+		
+		// Look for a field
+		field, found := objType.FieldByName(attr)
+		if found {
+			entry.fieldIndex = field.Index[0] // Assuming single-level field access
+		}
+		
+		// Look for a method on the value
+		method, found := objType.MethodByName(attr)
+		if found && method.Type.NumIn() == 1 { // The receiver is the first argument
+			entry.isMethod = true
+			entry.methodIndex = method.Index
+		} else {
+			// Look for a method on the pointer to the value
+			ptrType := reflect.PtrTo(objType)
+			method, found := ptrType.MethodByName(attr)
+			if found && method.Type.NumIn() == 1 {
+				entry.isMethod = true
+				entry.ptrMethod = true
+				entry.methodIndex = method.Index
+			}
+		}
+		
+		// Cache the lookup result
+		attributeCache.Lock()
+		attributeCache.m[key] = entry
+		attributeCache.Unlock()
+	}
+	
+	// Use the cached lookup information to get the attribute
+	
+	// Try field access first
+	if entry.fieldIndex >= 0 {
+		field := objValue.Field(entry.fieldIndex)
 		if field.IsValid() && field.CanInterface() {
 			return field.Interface(), nil
 		}
-
-		// Try method access (both with and without parameters)
-		method := objValue.MethodByName(attr)
-		if method.IsValid() {
-			if method.Type().NumIn() == 0 {
-				results := method.Call(nil)
-				if len(results) > 0 {
-					return results[0].Interface(), nil
-				}
-				return nil, nil
+	}
+	
+	// Try method access
+	if entry.isMethod && entry.methodIndex >= 0 {
+		var method reflect.Value
+		
+		if entry.ptrMethod {
+			// Need a pointer to the struct
+			if isPtr {
+				// Object is already a pointer, use the original value
+				method = reflect.ValueOf(obj).Method(entry.methodIndex)
+			} else {
+				// Create a new pointer to the struct
+				ptrValue := reflect.New(objType)
+				ptrValue.Elem().Set(objValue)
+				method = ptrValue.Method(entry.methodIndex)
 			}
+		} else {
+			// Method is directly on the struct type
+			method = objValue.Method(entry.methodIndex)
 		}
-
-		// Try method on pointer to struct
-		ptrValue := reflect.New(objValue.Type())
-		ptrValue.Elem().Set(objValue)
-		method = ptrValue.MethodByName(attr)
+		
 		if method.IsValid() {
-			if method.Type().NumIn() == 0 {
-				results := method.Call(nil)
-				if len(results) > 0 {
-					return results[0].Interface(), nil
-				}
-				return nil, nil
+			results := method.Call(nil)
+			if len(results) > 0 {
+				return results[0].Interface(), nil
 			}
+			return nil, nil
 		}
 	}
-
+	
 	return nil, fmt.Errorf("%w: %s", ErrInvalidAttribute, attr)
 }
 

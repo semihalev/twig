@@ -121,6 +121,9 @@ func (l *CompiledLoader) LoadAll(engine *Engine) error {
 		return fmt.Errorf("failed to read directory: %w", err)
 	}
 
+	// Collect errors during loading
+	var loadErrors []error
+	
 	// Load each compiled template
 	for _, file := range files {
 		// Skip directories
@@ -136,9 +139,22 @@ func (l *CompiledLoader) LoadAll(engine *Engine) error {
 
 			// Load the template
 			if err := l.LoadCompiled(engine, name); err != nil {
-				return fmt.Errorf("failed to load compiled template %s: %w", name, err)
+				// Collect the error but continue loading other templates
+				loadErrors = append(loadErrors, fmt.Errorf("failed to load compiled template %s: %w", name, err))
 			}
 		}
+	}
+
+	// If there were any errors, return a combined error
+	if len(loadErrors) > 0 {
+		var errMsg string
+		for i, err := range loadErrors {
+			if i > 0 {
+				errMsg += "; "
+			}
+			errMsg += err.Error()
+		}
+		return fmt.Errorf("errors loading compiled templates: %s", errMsg)
 	}
 
 	return nil

@@ -132,14 +132,14 @@ func (e *Engine) Load(name string) (*Template, error) {
 	if e.environment.cache {
 		e.mu.RLock()
 		if tmpl, ok := e.templates[name]; ok {
-			e.mu.RUnlock()
-
-			// If auto-reload is disabled, return the cached template
+			// If auto-reload is disabled, return the cached template immediately under read lock
 			if !e.autoReload {
+				defer e.mu.RUnlock()
 				return tmpl, nil
 			}
 
 			// If auto-reload is enabled, check if the template has been modified
+			// We need to keep the read lock while checking if reload is needed
 			if tmpl.loader != nil {
 				// Check if the loader supports timestamp checking
 				if tsLoader, ok := tmpl.loader.(TimestampAwareLoader); ok {
@@ -147,10 +147,12 @@ func (e *Engine) Load(name string) (*Template, error) {
 					currentModTime, err := tsLoader.GetModifiedTime(name)
 					if err == nil && currentModTime <= tmpl.lastModified {
 						// Template hasn't been modified, use the cached version
+						defer e.mu.RUnlock()
 						return tmpl, nil
 					}
 				}
 			}
+			e.mu.RUnlock()
 		} else {
 			e.mu.RUnlock()
 		}
@@ -462,8 +464,11 @@ func (e *Engine) ParseTemplate(source string) (*Template, error) {
 
 // Render renders a template with the given context
 func (t *Template) Render(context map[string]interface{}) (string, error) {
-	var buf StringBuffer
-	err := t.RenderTo(&buf, context)
+	// Get a string buffer from the pool
+	buf := NewStringBuffer()
+	defer buf.Release()
+	
+	err := t.RenderTo(buf, context)
 	if err != nil {
 		return "", err
 	}
@@ -472,20 +477,11 @@ func (t *Template) Render(context map[string]interface{}) (string, error) {
 
 // RenderTo renders a template to a writer
 func (t *Template) RenderTo(w io.Writer, context map[string]interface{}) error {
-	if context == nil {
-		context = make(map[string]interface{})
-	}
-
-	// Create a render context with access to the engine
-	ctx := &RenderContext{
-		env:          t.env,
-		context:      context,
-		blocks:       make(map[string][]Node),
-		macros:       make(map[string]Node),
-		engine:       t.engine,
-		extending:    false,
-		currentBlock: nil,
-	}
+	// Get a render context from the pool
+	ctx := NewRenderContext(t.env, context, t.engine)
+	
+	// Ensure the context is returned to the pool
+	defer ctx.Release()
 
 	return t.nodes.Render(w, ctx)
 }
@@ -510,6 +506,25 @@ func (t *Template) SaveCompiled() ([]byte, error) {
 // StringBuffer is a simple buffer for string building
 type StringBuffer struct {
 	buf bytes.Buffer
+}
+
+// stringBufferPool is a sync.Pool for StringBuffer objects
+var stringBufferPool = sync.Pool{
+	New: func() interface{} {
+		return &StringBuffer{}
+	},
+}
+
+// NewStringBuffer gets a StringBuffer from the pool
+func NewStringBuffer() *StringBuffer {
+	buffer := stringBufferPool.Get().(*StringBuffer)
+	buffer.buf.Reset() // Clear any previous content
+	return buffer
+}
+
+// Release returns the StringBuffer to the pool
+func (b *StringBuffer) Release() {
+	stringBufferPool.Put(b)
 }
 
 // Write implements io.Writer

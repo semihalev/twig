@@ -78,6 +78,17 @@
    - Created example application demonstrating template compilation workflow
    - Updated documentation with detailed information about the compilation feature
 
+## Recent Improvements
+
+5. **Performance and Stability Enhancements**
+   - Fixed concurrency safety issues in template caching
+   - Implemented attribute access caching to reduce reflection usage
+   - Added memory pooling for render contexts and string buffers
+   - Improved error handling for more resilient template loading
+   - Laid groundwork for AST caching in compiled templates
+   - Added detailed benchmarks showing performance improvements
+   - Created comprehensive documentation of all improvements
+
 ## Future Improvements
 
 1. **More Tests**
@@ -87,4 +98,13 @@
 2. **Error Handling**
    - Improve error messages for filter-related issues
    - Add better debugging support
+
+3. **Advanced Compilation**
+   - Implement full AST serialization with exportable node fields
+   - Create a more efficient binary format for compiled templates
+   - Skip parsing step completely for compiled templates
+
+4. **Memory Optimization**
+   - Implement additional memory pools for other frequently allocated objects
+   - Add size-limited template cache with LRU eviction policy
 
