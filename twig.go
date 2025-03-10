@@ -1,3 +1,5 @@
+//go:generate go run tools/lexgen/main.go -output gen
+//go:generate go run tools/parsegen/main.go -output gen
 package twig
 
 import (
@@ -131,6 +133,52 @@ func (e *Engine) Load(name string) (*Template, error) {
 	}
 
 	return nil, ErrTemplateNotFound
+}
+
+// RegisterString registers a template from a string source
+func (e *Engine) RegisterString(name string, source string) error {
+	parser := &Parser{}
+	nodes, err := parser.Parse(source)
+	if err != nil {
+		return err
+	}
+
+	template := &Template{
+		name:   name,
+		source: source,
+		nodes:  nodes,
+		env:    e.environment,
+		engine: e,
+	}
+
+	e.mu.Lock()
+	e.templates[name] = template
+	e.mu.Unlock()
+
+	return nil
+}
+
+// GetEnvironment returns the engine's environment
+func (e *Engine) GetEnvironment() *Environment {
+	return e.environment
+}
+
+// RegisterTemplate directly registers a pre-built template
+func (e *Engine) RegisterTemplate(name string, template *Template) {
+	e.mu.Lock()
+	e.templates[name] = template
+	e.mu.Unlock()
+}
+
+// NewTemplate creates a new template with the given parameters
+func (e *Engine) NewTemplate(name string, source string, nodes Node) *Template {
+	return &Template{
+		name:   name,
+		source: source,
+		nodes:  nodes,
+		env:    e.environment,
+		engine: e,
+	}
 }
 
 // ParseTemplate parses a template string

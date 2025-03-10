@@ -486,3 +486,72 @@ func TestIfStatement(t *testing.T) {
 		t.Errorf("Expected result to be %q, but got %q", expected, result)
 	}
 }
+
+func TestSetTag(t *testing.T) {
+	engine := New()
+	
+	// Create a parser to parse a template string
+	parser := &Parser{}
+	source := "{% set greeting = 'Hello, Twig!' %}{{ greeting }}"
+	
+	// Parse the template
+	node, err := parser.Parse(source)
+	if err != nil {
+		t.Fatalf("Error parsing set template: %v", err)
+	}
+	
+	// Create a template with the parsed nodes
+	template := &Template{
+		name:   "set_test",
+		source: source,
+		nodes:  node,
+		env:    engine.environment,
+		engine: engine,
+	}
+	
+	// Register the template
+	engine.RegisterTemplate("set_test", template)
+	
+	// Render with an empty context
+	context := map[string]interface{}{}
+	
+	result, err := engine.Render("set_test", context)
+	if err != nil {
+		t.Fatalf("Error rendering set template: %v", err)
+	}
+	
+	expected := "Hello, Twig!"
+	if result != expected {
+		t.Errorf("Expected result to be %q, but got %q", expected, result)
+	}
+	
+	// Test setting with an expression
+	exprSource := "{% set num = 5 + 10 %}{{ num }}"
+	exprNode, err := parser.Parse(exprSource)
+	if err != nil {
+		t.Fatalf("Error parsing expression template: %v", err)
+	}
+	
+	// Create a template with the parsed nodes
+	exprTemplate := &Template{
+		name:   "expr_test",
+		source: exprSource,
+		nodes:  exprNode,
+		env:    engine.environment,
+		engine: engine,
+	}
+	
+	// Register the template
+	engine.RegisterTemplate("expr_test", exprTemplate)
+	
+	// Render with an empty context
+	exprResult, err := engine.Render("expr_test", context)
+	if err != nil {
+		t.Fatalf("Error rendering expression template: %v", err)
+	}
+	
+	exprExpected := "15"
+	if exprResult != exprExpected {
+		t.Errorf("Expected result to be %q, but got %q", exprExpected, exprResult)
+	}
+}

@@ -98,6 +98,13 @@ type IncludeNode struct {
 	line       int
 }
 
+// SetNode represents a variable assignment
+type SetNode struct {
+	name       string
+	value      Node
+	line       int
+}
+
 // CommentNode represents a {# comment #}
 type CommentNode struct {
 	content string
@@ -593,6 +600,29 @@ func (n *IncludeNode) Line() int {
 	return n.line
 }
 
+// Implement Node interface for SetNode
+func (n *SetNode) Render(w io.Writer, ctx *RenderContext) error {
+	// Evaluate the value expression
+	value, err := ctx.EvaluateExpression(n.value)
+	if err != nil {
+		return err
+	}
+	
+	// Set the variable in the context
+	ctx.SetVariable(n.name, value)
+	
+	// The set tag doesn't output anything
+	return nil
+}
+
+func (n *SetNode) Type() NodeType {
+	return NodeSet
+}
+
+func (n *SetNode) Line() int {
+	return n.line
+}
+
 // NewRootNode creates a new root node
 func NewRootNode(children []Node, line int) *RootNode {
 	return &RootNode{
@@ -664,5 +694,14 @@ func NewIncludeNode(template Node, variables map[string]Node, ignoreMissing, onl
 		ignoreMissing: ignoreMissing,
 		only:         only,
 		line:         line,
+	}
+}
+
+// NewSetNode creates a new set node
+func NewSetNode(name string, value Node, line int) *SetNode {
+	return &SetNode{
+		name:  name,
+		value: value,
+		line:  line,
 	}
 }

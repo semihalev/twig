@@ -11,52 +11,79 @@ func main() {
 	// Create a new Twig engine
 	engine := twig.New()
 
-	// Create an in-memory template loader
-	templates := map[string]string{
-		"hello": "Hello, {{ name }}!",
-		"page": `<!DOCTYPE html>
+	// Create a template with set tag (using single quotes for string literals)
+	simpleTemplate := `
 <html>
-<head>
-    <title>{{ title }}</title>
-</head>
 <body>
-    <h1>{{ title }}</h1>
+    <h1>{{ shop_name }}</h1>
+    
+    {% set greeting = 'Welcome to our shop!' %}
+    <p>{{ greeting }}</p>
+    
+    {% set year = 2025 %}
+    <p>Copyright {{ year }}</p>
+    
+    {% set company = shop_name %}
+    <p>{{ company }}</p>
+    
+    {% set message = greeting ~ ' Come visit us!' %}
+    <p>{{ message }}</p>
+    
+    {% set price = 100 %}
+    <p>Original price: ${{ price }}</p>
+    
+    {% set discount = 20 %}
+    {% set final_price = price - discount %}
+    <p>Final price after ${{ discount }} discount: ${{ final_price }}</p>
+    
+    <h2>Products</h2>
+    {% set discount_rate = 15 %}
+    <p>Special discount: {{ discount_rate }}%</p>
+    
     <ul>
-    {% for item in items %}
-        <li>{{ item }}</li>
+    {% for product in products %}
+        {% set discount_amount = product.price * 0.15 %}
+        {% set sale_price = product.price - discount_amount %}
+        <li>
+            {{ product.name }} - Original: ${{ product.price }}, Sale: ${{ sale_price }}, You save: ${{ discount_amount }}
+        </li>
     {% endfor %}
     </ul>
 </body>
-</html>`,
-	}
-	loader := twig.NewArrayLoader(templates)
-	engine.RegisterLoader(loader)
+</html>
+`
 
-	// Render a simple template
-	context := map[string]interface{}{
-		"name": "World",
-	}
-
-	result, err := engine.Render("hello", context)
+	// Register the template
+	err := engine.RegisterString("shop_template", simpleTemplate)
 	if err != nil {
-		fmt.Printf("Error rendering hello template: %v\n", err)
+		fmt.Printf("Error registering template: %v\n", err)
 		return
 	}
-
-	fmt.Println("Result of 'hello' template:")
-	fmt.Println(result)
-	fmt.Println()
-
-	// Render a more complex template
-	pageContext := map[string]interface{}{
-		"title": "My Page",
-		"items": []string{"Item 1", "Item 2", "Item 3"},
+	
+	// Create a context with some products
+	context := map[string]interface{}{
+		"shop_name": "Twig Marketplace",
+		"products": []map[string]interface{}{
+			{
+				"name": "Laptop",
+				"price": 1200,
+			},
+			{
+				"name": "Phone",
+				"price": 800,
+			},
+			{
+				"name": "Headphones",
+				"price": 200,
+			},
+		},
 	}
-
-	fmt.Println("Result of 'page' template:")
-	err = engine.RenderTo(os.Stdout, "page", pageContext)
+	
+	// Render the template
+	fmt.Println("Rendering complex shop template with set tags:")
+	err = engine.RenderTo(os.Stdout, "shop_template", context)
 	if err != nil {
-		fmt.Printf("Error rendering page template: %v\n", err)
+		fmt.Printf("Error rendering template: %v\n", err)
 		return
 	}
 }
