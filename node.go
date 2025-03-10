@@ -38,6 +38,7 @@ const (
 	NodeComment
 	NodeVerbatim
 	NodeElement
+	NodeFunction
 )
 
 // RootNode represents the root of a template
@@ -109,6 +110,40 @@ type SetNode struct {
 type CommentNode struct {
 	content string
 	line    int
+}
+
+// We use the FunctionNode from expr.go
+
+// MacroNode represents a macro definition
+type MacroNode struct {
+	name     string
+	params   []string
+	defaults map[string]Node
+	body     []Node
+	line     int
+}
+
+// ImportNode represents an import statement
+type ImportNode struct {
+	template Node
+	module   string
+	line     int
+}
+
+// FromImportNode represents a from import statement
+type FromImportNode struct {
+	template Node
+	macros   []string
+	aliases  map[string]string
+	line     int
+}
+
+// NullWriter is a writer that discards all data
+type NullWriter struct{}
+
+// Write implements io.Writer for NullWriter
+func (w *NullWriter) Write(p []byte) (n int, err error) {
+	return len(p), nil
 }
 
 // Implement Node interface for RootNode
@@ -185,6 +220,12 @@ func (n *PrintNode) Render(w io.Writer, ctx *RenderContext) error {
 	result, err := ctx.EvaluateExpression(n.expression)
 	if err != nil {
 		return err
+	}
+	
+	// Check if result is a callable (for macros)
+	if callable, ok := result.(func(io.Writer) error); ok {
+		// Execute the callable directly
+		return callable(w)
 	}
 	
 	// Convert result to string and write
@@ -703,5 +744,260 @@ func NewSetNode(name string, value Node, line int) *SetNode {
 		name:  name,
 		value: value,
 		line:  line,
+	}
+}
+
+// Make FunctionNode implement Node interface
+func (n *FunctionNode) Render(w io.Writer, ctx *RenderContext) error {
+	// Evaluate arguments
+	args := make([]interface{}, len(n.args))
+	for i, arg := range n.args {
+		val, err := ctx.EvaluateExpression(arg)
+		if err != nil {
+			return err
+		}
+		args[i] = val
+	}
+	
+	// Call the function
+	result, err := ctx.CallFunction(n.name, args)
+	if err != nil {
+		return err
+	}
+	
+	// Check if result is a callable (for macros)
+	if callable, ok := result.(func(io.Writer) error); ok {
+		// Execute the callable directly
+		return callable(w)
+	}
+	
+	// Write the result
+	_, err = w.Write([]byte(ctx.ToString(result)))
+	return err
+}
+
+func (n *FunctionNode) Type() NodeType {
+	return NodeFunction
+}
+
+func (n *FunctionNode) Line() int {
+	return n.line
+}
+
+// Implement Node interface for MacroNode
+func (n *MacroNode) Render(w io.Writer, ctx *RenderContext) error {
+	// Register the macro in the context
+	if ctx.macros == nil {
+		ctx.macros = make(map[string]Node)
+	}
+	ctx.macros[n.name] = n
+	return nil
+}
+
+func (n *MacroNode) Type() NodeType {
+	return NodeMacro
+}
+
+func (n *MacroNode) Line() int {
+	return n.line
+}
+
+// Call executes the macro with the given arguments
+func (n *MacroNode) Call(w io.Writer, ctx *RenderContext, args []interface{}) error {
+	// Create a new context for the macro
+	macroContext := &RenderContext{
+		env:     ctx.env,
+		context: make(map[string]interface{}),
+		blocks:  ctx.blocks,
+		macros:  ctx.macros,
+		parent:  ctx.parent,
+		engine:  ctx.engine,
+	}
+	
+	// Set parameter values from arguments
+	for i, param := range n.params {
+		if i < len(args) {
+			// Use provided argument
+			macroContext.context[param] = args[i]
+		} else if defaultValue, ok := n.defaults[param]; ok {
+			// Use default value
+			value, err := ctx.EvaluateExpression(defaultValue)
+			if err != nil {
+				return err
+			}
+			macroContext.context[param] = value
+		} else {
+			// No argument or default, set to nil
+			macroContext.context[param] = nil
+		}
+	}
+	
+	// Render the macro body
+	for _, node := range n.body {
+		if err := node.Render(w, macroContext); err != nil {
+			return err
+		}
+	}
+	
+	return nil
+}
+
+// Implement Node interface for ImportNode
+func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
+	// Evaluate the template name
+	templateNameVal, err := ctx.EvaluateExpression(n.template)
+	if err != nil {
+		return err
+	}
+	
+	templateName, ok := templateNameVal.(string)
+	if !ok {
+		return fmt.Errorf("template name must be a string at line %d", n.line)
+	}
+	
+	// Load the template
+	template, err := ctx.engine.Load(templateName)
+	if err != nil {
+		return err
+	}
+	
+	// Create a new context for executing the template
+	importContext := &RenderContext{
+		env:     ctx.env,
+		context: make(map[string]interface{}),
+		blocks:  make(map[string][]Node),
+		macros:  make(map[string]Node),
+		engine:  ctx.engine,
+	}
+	
+	// Execute the template without output to collect macros
+	var nullWriter NullWriter
+	if err := template.nodes.Render(&nullWriter, importContext); err != nil {
+		return err
+	}
+	
+	// Create a module object with the macros
+	module := make(map[string]interface{})
+	for name, macro := range importContext.macros {
+		module[name] = macro
+	}
+	
+	// Add the module to the current context
+	ctx.SetVariable(n.module, module)
+	
+	return nil
+}
+
+func (n *ImportNode) Type() NodeType {
+	return NodeImport
+}
+
+func (n *ImportNode) Line() int {
+	return n.line
+}
+
+// Implement Node interface for FromImportNode
+func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
+	// Evaluate the template name
+	templateNameVal, err := ctx.EvaluateExpression(n.template)
+	if err != nil {
+		return err
+	}
+	
+	templateName, ok := templateNameVal.(string)
+	if !ok {
+		return fmt.Errorf("template name must be a string at line %d", n.line)
+	}
+	
+	// Load the template
+	template, err := ctx.engine.Load(templateName)
+	if err != nil {
+		return err
+	}
+	
+	// Create a new context for executing the template
+	importContext := &RenderContext{
+		env:     ctx.env,
+		context: make(map[string]interface{}),
+		blocks:  make(map[string][]Node),
+		macros:  make(map[string]Node),
+		engine:  ctx.engine,
+	}
+	
+	// Execute the template without output to collect macros
+	var nullWriter NullWriter
+	if err := template.nodes.Render(&nullWriter, importContext); err != nil {
+		return err
+	}
+	
+	// Import the specified macros into the current context
+	if ctx.macros == nil {
+		ctx.macros = make(map[string]Node)
+	}
+	
+	// Add the directly imported macros
+	for _, macroName := range n.macros {
+		if macro, ok := importContext.macros[macroName]; ok {
+			ctx.macros[macroName] = macro
+		}
+	}
+	
+	// Add the aliased macros
+	for macroName, alias := range n.aliases {
+		if macro, ok := importContext.macros[macroName]; ok {
+			ctx.macros[alias] = macro
+		}
+	}
+	
+	return nil
+}
+
+func (n *FromImportNode) Type() NodeType {
+	return NodeImport
+}
+
+func (n *FromImportNode) Line() int {
+	return n.line
+}
+
+// NewFunctionNode creates a new function call node
+func NewFunctionNode(name string, args []Node, line int) *FunctionNode {
+	return &FunctionNode{
+		ExpressionNode: ExpressionNode{
+			exprType: ExprFunction,
+			line:     line,
+		},
+		name: name,
+		args: args,
+	}
+}
+
+// NewMacroNode creates a new macro node
+func NewMacroNode(name string, params []string, defaults map[string]Node, body []Node, line int) *MacroNode {
+	return &MacroNode{
+		name:     name,
+		params:   params,
+		defaults: defaults,
+		body:     body,
+		line:     line,
+	}
+}
+
+// NewImportNode creates a new import node
+func NewImportNode(templateExpr Node, alias string, line int) *ImportNode {
+	return &ImportNode{
+		template: templateExpr,
+		module:   alias,
+		line:     line,
+	}
+}
+
+// NewFromImportNode creates a new from import node
+func NewFromImportNode(templateExpr Node, macros []string, aliases map[string]string, line int) *FromImportNode {
+	return &FromImportNode{
+		template: templateExpr,
+		macros:   macros,
+		aliases:  aliases,
+		line:     line,
 	}
 }

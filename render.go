@@ -3,6 +3,7 @@ package twig
 import (
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"strconv"
 )
@@ -58,6 +59,235 @@ func (ctx *RenderContext) SetVariable(name string, value interface{}) {
 	ctx.context[name] = value
 }
 
+// GetMacro gets a macro from the context
+func (ctx *RenderContext) GetMacro(name string) (Node, bool) {
+	// Check local macros first
+	if macro, ok := ctx.macros[name]; ok {
+		return macro, true
+	}
+	
+	// Check parent context
+	if ctx.parent != nil {
+		return ctx.parent.GetMacro(name)
+	}
+	
+	return nil, false
+}
+
+// CallMacro calls a macro with the given arguments
+func (ctx *RenderContext) CallMacro(w io.Writer, name string, args []interface{}) error {
+	// Find the macro
+	macro, ok := ctx.GetMacro(name)
+	if !ok {
+		return fmt.Errorf("macro '%s' not found", name)
+	}
+	
+	// Check if it's a MacroNode
+	macroNode, ok := macro.(*MacroNode)
+	if !ok {
+		return fmt.Errorf("'%s' is not a macro", name)
+	}
+	
+	// Call the macro
+	return macroNode.Call(w, ctx, args)
+}
+
+// CallFunction calls a function with the given arguments
+func (ctx *RenderContext) CallFunction(name string, args []interface{}) (interface{}, error) {
+	// Check if it's a built-in function
+	switch name {
+	case "range":
+		return ctx.callRangeFunction(args)
+	case "length", "count":
+		return ctx.callLengthFunction(args)
+	case "max":
+		return ctx.callMaxFunction(args)
+	case "min":
+		return ctx.callMinFunction(args)
+	}
+	
+	// Check if it's a function in the environment
+	if ctx.env != nil {
+		if fn, ok := ctx.env.functions[name]; ok {
+			return fn(ctx, args)
+		}
+	}
+	
+	// Check if it's a macro
+	if macro, ok := ctx.GetMacro(name); ok {
+		// Return a callable function
+		return func(w io.Writer) error {
+			macroNode, ok := macro.(*MacroNode)
+			if !ok {
+				return fmt.Errorf("'%s' is not a macro", name)
+			}
+			return macroNode.Call(w, ctx, args)
+		}, nil
+	}
+	
+	return nil, fmt.Errorf("function '%s' not found", name)
+}
+
+// callRangeFunction implements the range function
+func (ctx *RenderContext) callRangeFunction(args []interface{}) (interface{}, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("range function requires at least 2 arguments")
+	}
+	
+	// Get the start and end values
+	start, ok1 := ctx.toNumber(args[0])
+	end, ok2 := ctx.toNumber(args[1])
+	
+	if !ok1 || !ok2 {
+		return nil, fmt.Errorf("range arguments must be numbers")
+	}
+	
+	// Get the step value (default is 1)
+	step := 1.0
+	if len(args) > 2 {
+		if s, ok := ctx.toNumber(args[2]); ok {
+			step = s
+		}
+	}
+	
+	// Create the range
+	var result []int
+	for i := start; i <= end; i += step {
+		result = append(result, int(i))
+	}
+	
+	return result, nil
+}
+
+// callLengthFunction implements the length/count function
+func (ctx *RenderContext) callLengthFunction(args []interface{}) (interface{}, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("length/count function requires exactly 1 argument")
+	}
+	
+	val := args[0]
+	v := reflect.ValueOf(val)
+	
+	switch v.Kind() {
+	case reflect.String:
+		return len(v.String()), nil
+	case reflect.Slice, reflect.Array:
+		return v.Len(), nil
+	case reflect.Map:
+		return v.Len(), nil
+	default:
+		return 0, nil
+	}
+}
+
+// callMaxFunction implements the max function
+func (ctx *RenderContext) callMaxFunction(args []interface{}) (interface{}, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("max function requires at least 1 argument")
+	}
+	
+	// If the argument is a slice or array, find the max value in it
+	if len(args) == 1 {
+		v := reflect.ValueOf(args[0])
+		if v.Kind() == reflect.Slice || v.Kind() == reflect.Array {
+			if v.Len() == 0 {
+				return nil, nil
+			}
+			
+			max := v.Index(0).Interface()
+			maxNum, ok := ctx.toNumber(max)
+			if !ok {
+				return max, nil
+			}
+			
+			for i := 1; i < v.Len(); i++ {
+				val := v.Index(i).Interface()
+				if valNum, ok := ctx.toNumber(val); ok {
+					if valNum > maxNum {
+						max = val
+						maxNum = valNum
+					}
+				}
+			}
+			
+			return max, nil
+		}
+	}
+	
+	// Find the max value in the arguments
+	max := args[0]
+	maxNum, ok := ctx.toNumber(max)
+	if !ok {
+		return max, nil
+	}
+	
+	for i := 1; i < len(args); i++ {
+		val := args[i]
+		if valNum, ok := ctx.toNumber(val); ok {
+			if valNum > maxNum {
+				max = val
+				maxNum = valNum
+			}
+		}
+	}
+	
+	return max, nil
+}
+
+// callMinFunction implements the min function
+func (ctx *RenderContext) callMinFunction(args []interface{}) (interface{}, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("min function requires at least 1 argument")
+	}
+	
+	// If the argument is a slice or array, find the min value in it
+	if len(args) == 1 {
+		v := reflect.ValueOf(args[0])
+		if v.Kind() == reflect.Slice || v.Kind() == reflect.Array {
+			if v.Len() == 0 {
+				return nil, nil
+			}
+			
+			min := v.Index(0).Interface()
+			minNum, ok := ctx.toNumber(min)
+			if !ok {
+				return min, nil
+			}
+			
+			for i := 1; i < v.Len(); i++ {
+				val := v.Index(i).Interface()
+				if valNum, ok := ctx.toNumber(val); ok {
+					if valNum < minNum {
+						min = val
+						minNum = valNum
+					}
+				}
+			}
+			
+			return min, nil
+		}
+	}
+	
+	// Find the min value in the arguments
+	min := args[0]
+	minNum, ok := ctx.toNumber(min)
+	if !ok {
+		return min, nil
+	}
+	
+	for i := 1; i < len(args); i++ {
+		val := args[i]
+		if valNum, ok := ctx.toNumber(val); ok {
+			if valNum < minNum {
+				min = val
+				minNum = valNum
+			}
+		}
+	}
+	
+	return min, nil
+}
+
 // EvaluateExpression evaluates an expression node
 func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 	switch n := node.(type) {
@@ -65,6 +295,12 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		return n.value, nil
 		
 	case *VariableNode:
+		// Check if it's a macro first
+		if macro, ok := ctx.GetMacro(n.name); ok {
+			return macro, nil
+		}
+		
+		// Otherwise, look up variable
 		return ctx.GetVariable(n.name)
 		
 	case *GetAttrNode:
@@ -83,6 +319,13 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 			return nil, fmt.Errorf("attribute name must be a string")
 		}
 		
+		// Check if obj is a map containing macros (from import)
+		if moduleMap, ok := obj.(map[string]interface{}); ok {
+			if macro, ok := moduleMap[attrStr]; ok {
+				return macro, nil
+			}
+		}
+		
 		return ctx.getAttribute(obj, attrStr)
 		
 	case *BinaryNode:
@@ -97,6 +340,42 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		}
 		
 		return ctx.evaluateBinaryOp(n.operator, left, right)
+		
+	case *FunctionNode:
+		// Check if it's a macro call
+		if macro, ok := ctx.GetMacro(n.name); ok {
+			// Evaluate arguments
+			args := make([]interface{}, len(n.args))
+			for i, arg := range n.args {
+				val, err := ctx.EvaluateExpression(arg)
+				if err != nil {
+					return nil, err
+				}
+				args[i] = val
+			}
+			
+			// Return a callable that can be rendered later
+			return func(w io.Writer) error {
+				macroNode, ok := macro.(*MacroNode)
+				if !ok {
+					return fmt.Errorf("'%s' is not a macro", n.name)
+				}
+				return macroNode.Call(w, ctx, args)
+			}, nil
+		}
+		
+		// Otherwise, it's a regular function call
+		// Evaluate arguments
+		args := make([]interface{}, len(n.args))
+		for i, arg := range n.args {
+			val, err := ctx.EvaluateExpression(arg)
+			if err != nil {
+				return nil, err
+			}
+			args[i] = val
+		}
+		
+		return ctx.CallFunction(n.name, args)
 		
 	default:
 		return nil, fmt.Errorf("unsupported expression type: %T", node)

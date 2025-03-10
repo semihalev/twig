@@ -86,6 +86,7 @@ func (p *Parser) initBlockHandlers() {
 		// Special closing tags - they will be handled in their corresponding open tag parsers
 		"endif":   p.parseEndTag,
 		"endfor":  p.parseEndTag,
+		"endmacro": p.parseEndTag,
 		"endblock": p.parseEndTag,
 		"else":    p.parseEndTag,
 		"elseif":  p.parseEndTag,
@@ -338,7 +339,7 @@ func (p *Parser) parseOuterTemplate() ([]Node, error) {
 			
 			// Check if this is a control ending tag (endif, endfor, endblock, etc.)
 			if blockName == "endif" || blockName == "endfor" || blockName == "endblock" || 
-			   blockName == "else" || blockName == "elseif" {
+			   blockName == "endmacro" || blockName == "else" || blockName == "elseif" {
 				// We should return to the parent parser that's handling the parent block
 				// First move back two steps to the start of the block tag
 				p.tokenIndex -= 2
@@ -917,18 +918,224 @@ func (p *Parser) parseDo(parser *Parser) (Node, error) {
 }
 
 func (p *Parser) parseMacro(parser *Parser) (Node, error) {
-	// Placeholder for macro parsing
-	return nil, fmt.Errorf("macros not implemented yet")
+	// Get the line number of the macro token
+	macroLine := parser.tokens[parser.tokenIndex-2].Line
+	
+	// Get the macro name
+	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_NAME {
+		return nil, fmt.Errorf("expected macro name after macro keyword at line %d", macroLine)
+	}
+	
+	macroName := parser.tokens[parser.tokenIndex].Value
+	parser.tokenIndex++
+	
+	// Expect opening parenthesis for parameters
+	if parser.tokenIndex >= len(parser.tokens) || 
+	   parser.tokens[parser.tokenIndex].Type != TOKEN_PUNCTUATION || 
+	   parser.tokens[parser.tokenIndex].Value != "(" {
+		return nil, fmt.Errorf("expected '(' after macro name at line %d", macroLine)
+	}
+	parser.tokenIndex++
+	
+	// Parse parameters
+	var params []string
+	defaults := make(map[string]Node)
+	
+	// If we don't have a closing parenthesis immediately, we have parameters
+	if parser.tokenIndex < len(parser.tokens) && 
+	   (parser.tokens[parser.tokenIndex].Type != TOKEN_PUNCTUATION || 
+	    parser.tokens[parser.tokenIndex].Value != ")") {
+		
+		for {
+			// Get parameter name
+			if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_NAME {
+				return nil, fmt.Errorf("expected parameter name at line %d", macroLine)
+			}
+			
+			paramName := parser.tokens[parser.tokenIndex].Value
+			params = append(params, paramName)
+			parser.tokenIndex++
+			
+			// Check for default value
+			if parser.tokenIndex < len(parser.tokens) && 
+			   parser.tokens[parser.tokenIndex].Type == TOKEN_OPERATOR && 
+			   parser.tokens[parser.tokenIndex].Value == "=" {
+				parser.tokenIndex++ // Skip =
+				
+				// Parse default value expression
+				defaultExpr, err := parser.parseExpression()
+				if err != nil {
+					return nil, err
+				}
+				
+				defaults[paramName] = defaultExpr
+			}
+			
+			// Check if we have more parameters
+			if parser.tokenIndex < len(parser.tokens) && 
+			   parser.tokens[parser.tokenIndex].Type == TOKEN_PUNCTUATION && 
+			   parser.tokens[parser.tokenIndex].Value == "," {
+				parser.tokenIndex++ // Skip comma
+				continue
+			}
+			
+			break
+		}
+	}
+	
+	// Expect closing parenthesis
+	if parser.tokenIndex >= len(parser.tokens) || 
+	   parser.tokens[parser.tokenIndex].Type != TOKEN_PUNCTUATION || 
+	   parser.tokens[parser.tokenIndex].Value != ")" {
+		return nil, fmt.Errorf("expected ')' after macro parameters at line %d", macroLine)
+	}
+	parser.tokenIndex++
+	
+	// Expect block end
+	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
+		return nil, fmt.Errorf("expected block end token after macro declaration at line %d", macroLine)
+	}
+	parser.tokenIndex++
+	
+	// Parse the macro body
+	bodyNodes, err := parser.parseOuterTemplate()
+	if err != nil {
+		return nil, err
+	}
+	
+	// Expect endmacro tag
+	if parser.tokenIndex+1 >= len(parser.tokens) || 
+	   parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_START || 
+	   parser.tokens[parser.tokenIndex+1].Type != TOKEN_NAME || 
+	   parser.tokens[parser.tokenIndex+1].Value != "endmacro" {
+		return nil, fmt.Errorf("missing endmacro tag for macro '%s' at line %d", 
+			macroName, macroLine)
+	}
+	
+	// Skip {% endmacro %}
+	parser.tokenIndex += 2 // Skip {% endmacro
+	
+	// Expect block end
+	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
+		return nil, fmt.Errorf("expected block end token after endmacro at line %d", parser.tokens[parser.tokenIndex].Line)
+	}
+	parser.tokenIndex++
+	
+	// Create the macro node
+	return NewMacroNode(macroName, params, defaults, bodyNodes, macroLine), nil
 }
 
 func (p *Parser) parseImport(parser *Parser) (Node, error) {
-	// Placeholder for import parsing
-	return nil, fmt.Errorf("import not implemented yet")
+	// Get the line number of the import token
+	importLine := parser.tokens[parser.tokenIndex-2].Line
+	
+	// Get the template to import
+	templateExpr, err := parser.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	
+	// Expect 'as' keyword
+	if parser.tokenIndex >= len(parser.tokens) || 
+	   parser.tokens[parser.tokenIndex].Type != TOKEN_NAME || 
+	   parser.tokens[parser.tokenIndex].Value != "as" {
+		return nil, fmt.Errorf("expected 'as' after template path at line %d", importLine)
+	}
+	parser.tokenIndex++
+	
+	// Get the alias name
+	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_NAME {
+		return nil, fmt.Errorf("expected identifier after 'as' at line %d", importLine)
+	}
+	
+	alias := parser.tokens[parser.tokenIndex].Value
+	parser.tokenIndex++
+	
+	// Expect block end
+	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
+		return nil, fmt.Errorf("expected block end token after import statement at line %d", importLine)
+	}
+	parser.tokenIndex++
+	
+	// Create import node
+	return NewImportNode(templateExpr, alias, importLine), nil
 }
 
 func (p *Parser) parseFrom(parser *Parser) (Node, error) {
-	// Placeholder for from parsing
-	return nil, fmt.Errorf("from not implemented yet")
+	// Get the line number of the from token
+	fromLine := parser.tokens[parser.tokenIndex-2].Line
+	
+	// Get the template to import from
+	templateExpr, err := parser.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	
+	// Expect 'import' keyword
+	if parser.tokenIndex >= len(parser.tokens) || 
+	   parser.tokens[parser.tokenIndex].Type != TOKEN_NAME || 
+	   parser.tokens[parser.tokenIndex].Value != "import" {
+		return nil, fmt.Errorf("expected 'import' after template path at line %d", fromLine)
+	}
+	parser.tokenIndex++
+	
+	// Parse the imported items
+	var macros []string
+	aliases := make(map[string]string)
+	
+	// We need at least one macro to import
+	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_NAME {
+		return nil, fmt.Errorf("expected at least one identifier after 'import' at line %d", fromLine)
+	}
+	
+	for parser.tokenIndex < len(parser.tokens) && parser.tokens[parser.tokenIndex].Type == TOKEN_NAME {
+		// Get macro name
+		macroName := parser.tokens[parser.tokenIndex].Value
+		parser.tokenIndex++
+		
+		// Check for 'as' keyword for aliasing
+		if parser.tokenIndex < len(parser.tokens) && 
+		   parser.tokens[parser.tokenIndex].Type == TOKEN_NAME && 
+		   parser.tokens[parser.tokenIndex].Value == "as" {
+			parser.tokenIndex++ // Skip 'as'
+			
+			// Get alias name
+			if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_NAME {
+				return nil, fmt.Errorf("expected identifier after 'as' at line %d", fromLine)
+			}
+			
+			aliasName := parser.tokens[parser.tokenIndex].Value
+			aliases[macroName] = aliasName
+			parser.tokenIndex++
+		} else {
+			// No alias, just add to macros list
+			macros = append(macros, macroName)
+		}
+		
+		// Check for comma to separate items
+		if parser.tokenIndex < len(parser.tokens) && 
+		   parser.tokens[parser.tokenIndex].Type == TOKEN_PUNCTUATION && 
+		   parser.tokens[parser.tokenIndex].Value == "," {
+			parser.tokenIndex++ // Skip comma
+			
+			// Expect another identifier after comma
+			if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_NAME {
+				return nil, fmt.Errorf("expected identifier after ',' at line %d", fromLine)
+			}
+		} else {
+			// End of imports
+			break
+		}
+	}
+	
+	// Expect block end
+	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
+		return nil, fmt.Errorf("expected block end token after from import statement at line %d", fromLine)
+	}
+	parser.tokenIndex++
+	
+	// Create from import node
+	return NewFromImportNode(templateExpr, macros, aliases, fromLine), nil
 }
 
 // parseEndTag handles closing tags like endif, endfor, endblock, etc.
