@@ -16,6 +16,7 @@ Twig is a fast, memory-efficient Twig template engine implementation for Go. It 
 - Attribute caching to reduce reflection overhead
 - Detailed error reporting and debugging tools
 - Thread-safe and concurrency optimized
+- Robust escape sequence handling in string literals
 
 ## Installation
 
@@ -77,6 +78,7 @@ func main() {
 - Comments: `{# comment #}`
 - Array literals: `[1, 2, 3]`
 - Conditional expressions: `condition ? true_expr : false_expr`
+- String escape sequences: `\n`, `\"`, `\\`, `\{`, etc.
 - And more...
 
 ## Filter Support
@@ -329,6 +331,29 @@ if err != nil {
 }
 ```
 
+## String Escape Sequences
+
+Twig supports standard string escape sequences to include special characters in string literals:
+
+```twig
+{{ "Line with \n a newline character" }}
+{{ "Quotes need escaping: \"quoted text\"" }}
+{{ "Use \\ for a literal backslash" }}
+{{ "Escape Twig syntax: \{\{ this is not a variable \}\}" }}
+```
+
+The following escape sequences are supported:
+- `\n`: Newline
+- `\r`: Carriage return
+- `\t`: Tab
+- `\"`: Double quote
+- `\'`: Single quote
+- `\\`: Backslash
+- `\{`: Left curly brace (to avoid being interpreted as Twig syntax)
+- `\}`: Right curly brace (to avoid being interpreted as Twig syntax)
+
+This is particularly useful in JavaScript blocks or when you need to include literal braces in your output.
+
 ## Whitespace Handling
 
 Twig templates can have significant whitespace that affects the rendered output. This implementation supports several mechanisms for controlling whitespace:
@@ -380,6 +405,26 @@ The library is designed with performance in mind:
 - Production/development mode toggle
 - Optimized filter chain processing
 - Thread-safe concurrent rendering
+
+### Benchmark Results
+
+Twig consistently outperforms other Go template engines, especially for complex templates:
+
+| Engine      | Simple (µs/op) | Medium (µs/op) | Complex (µs/op) |
+|-------------|----------------|----------------|-----------------|
+| Twig        | 0.42           | 0.65           | 0.24            |
+| Go Template | 0.94           | 0.90           | 7.80            |
+| Pongo2      | 0.86           | 0.90           | 4.46            |
+| Stick       | 3.84           | 15.77          | 54.72           |
+
+For complex templates, Twig is:
+- **33x faster** than Go's standard library
+- **19x faster** than Pongo2
+- **228x faster** than Stick
+
+Twig also uses approximately **33x less memory** than Go's standard library.
+
+See [full benchmark results](benchmark/BENCHMARK_RESULTS.md) for detailed comparison.
 
 ## Template Compilation
 
