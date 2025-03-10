@@ -1,11 +1,20 @@
 # Twig
 
-<a href="https://goreportcard.com/report/github.com/semihalev/twig"><img src="https://goreportcard.com/badge/github.com/semihalev/twig?style=flat-square"></a>
-<a href="http://godoc.org/github.com/semihalev/twig"><img src="https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square"></a>
-<a href="https://github.com/semihalev/twig/releases"><img src="https://img.shields.io/github/v/release/semihalev/twig?style=flat-square"></a>
-<a href="https://github.com/semihalev/twig/blob/master/LICENSE"><img src="https://img.shields.io/github/license/semihalev/twig?style=flat-square"></a>
+<p align="center">
+  <img src="twig.svg" alt="Twig Logo" width="150" height="180">
+</p>
 
-Twig is a fast, memory-efficient Twig template engine implementation for Go. It aims to provide full support for the Twig template language in a Go-native way.
+<p align="center">
+  <a href="https://goreportcard.com/report/github.com/semihalev/twig"><img src="https://goreportcard.com/badge/github.com/semihalev/twig?style=flat-square"></a>
+  <a href="http://godoc.org/github.com/semihalev/twig"><img src="https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square"></a>
+  <a href="https://github.com/semihalev/twig/releases"><img src="https://img.shields.io/github/v/release/semihalev/twig?style=flat-square"></a>
+  <a href="https://github.com/semihalev/twig/blob/master/LICENSE"><img src="https://img.shields.io/github/license/semihalev/twig?style=flat-square"></a>
+</p>
+
+<p align="center">
+  A fast, memory-efficient Twig template engine implementation for Go.<br>
+  Provides full support for the Twig template language in a Go-native way.
+</p>
 
 ## Table of Contents
 
