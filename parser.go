@@ -63,7 +63,7 @@ func (p *Parser) Parse(source string) (Node, error) {
 	var err error
 	p.tokens, err = p.tokenize()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("tokenization error: %w", err)
 	}
 
 	// Debug tokenization output
@@ -81,7 +81,7 @@ func (p *Parser) Parse(source string) (Node, error) {
 	// Parse tokens into nodes
 	nodes, err := p.parseOuterTemplate()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing error: %w", err)
 	}
 
 	return NewRootNode(nodes, 1), nil

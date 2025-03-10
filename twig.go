@@ -5,7 +5,9 @@ package twig
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 )
@@ -91,6 +93,13 @@ func (e *Engine) SetStrictVars(strictVars bool) {
 // SetDebug enables or disables debug mode
 func (e *Engine) SetDebug(enabled bool) {
 	e.environment.debug = enabled
+	
+	// Set the debug level based on the debug flag
+	if enabled {
+		SetDebugLevel(DebugInfo)
+	} else {
+		SetDebugLevel(DebugOff)
+	}
 }
 
 // SetCache enables or disables template caching
@@ -108,21 +117,78 @@ func (e *Engine) SetDevelopmentMode(enabled bool) {
 
 // Render renders a template with the given context
 func (e *Engine) Render(name string, context map[string]interface{}) (string, error) {
+	LogInfo("Rendering template: %s", name)
+	
 	template, err := e.Load(name)
 	if err != nil {
+		LogError(err, fmt.Sprintf("Failed to load template: %s", name))
 		return "", err
 	}
 
+	// If debug is enabled, use more detailed error reporting
+	if e.environment.debug {
+		var buf StringBuffer
+		ctx := NewRenderContext(e.environment, context, e)
+		defer ctx.Release()
+		
+		// Use debug rendering with enhanced error reporting
+		err = DebugRender(&buf, template, ctx)
+		if err != nil {
+			LogError(err, fmt.Sprintf("Error rendering template: %s", name))
+			// Enhance error with template information
+			if enhancedErr, ok := err.(*EnhancedError); !ok {
+				err = NewError(err, name, 0, 0, template.source)
+			} else {
+				// Already enhanced, just ensure template name is set
+				if enhancedErr.Template == "" {
+					enhancedErr.Template = name
+				}
+			}
+			return "", err
+		}
+		
+		return buf.String(), nil
+	}
+	
+	// Normal rendering path without debug overhead
 	return template.Render(context)
 }
 
 // RenderTo renders a template to a writer
 func (e *Engine) RenderTo(w io.Writer, name string, context map[string]interface{}) error {
+	LogInfo("Rendering template to writer: %s", name)
+	
 	template, err := e.Load(name)
 	if err != nil {
+		LogError(err, fmt.Sprintf("Failed to load template: %s", name))
 		return err
 	}
 
+	// If debug is enabled, use more detailed error reporting
+	if e.environment.debug {
+		ctx := NewRenderContext(e.environment, context, e)
+		defer ctx.Release()
+		
+		// Use debug rendering with enhanced error reporting
+		err = DebugRender(w, template, ctx)
+		if err != nil {
+			LogError(err, fmt.Sprintf("Error rendering template: %s", name))
+			// Enhance error with template information
+			if enhancedErr, ok := err.(*EnhancedError); !ok {
+				err = NewError(err, name, 0, 0, template.source)
+			} else {
+				// Already enhanced, just ensure template name is set
+				if enhancedErr.Template == "" {
+					enhancedErr.Template = name
+				}
+			}
+			return err
+		}
+		
+		return nil
+	}
+	
+	// Normal rendering path without debug overhead
 	return template.RenderTo(w, context)
 }
 
@@ -161,10 +227,13 @@ func (e *Engine) Load(name string) (*Template, error) {
 	// Template not in cache or cache disabled or needs reloading
 	var lastModified int64
 	var sourceLoader Loader
+	var loaderErrors []error
 
 	for _, loader := range e.loaders {
 		source, err := loader.Load(name)
 		if err != nil {
+			// Collect loader errors for better diagnostics
+			loaderErrors = append(loaderErrors, fmt.Errorf("loader %T: %w", loader, err))
 			continue
 		}
 
@@ -174,11 +243,13 @@ func (e *Engine) Load(name string) (*Template, error) {
 		}
 
 		sourceLoader = loader
+		LogInfo("Template '%s' loaded from %T", name, loader)
 
 		parser := &Parser{}
 		nodes, err := parser.Parse(source)
 		if err != nil {
-			return nil, err
+			// Include more context in parsing errors
+			return nil, NewError(err, name, 0, 0, source)
 		}
 
 		template := &Template{
@@ -201,7 +272,21 @@ func (e *Engine) Load(name string) (*Template, error) {
 		return template, nil
 	}
 
-	return nil, ErrTemplateNotFound
+	// If we have collected errors from loaders, include them in the error message
+	if len(loaderErrors) > 0 {
+		errorDetails := strings.Builder{}
+		errorDetails.WriteString(fmt.Sprintf("Template '%s' not found. Tried %d loaders:\n", name, len(loaderErrors)))
+		
+		for i, err := range loaderErrors {
+			errorDetails.WriteString(fmt.Sprintf("  %d) %s\n", i+1, err.Error()))
+		}
+		
+		LogError(ErrTemplateNotFound, errorDetails.String())
+		return nil, fmt.Errorf("%w: %s", ErrTemplateNotFound, errorDetails.String())
+	}
+	
+	LogError(ErrTemplateNotFound, fmt.Sprintf("Template '%s' not found. No loaders configured.", name))
+	return nil, fmt.Errorf("%w: '%s'", ErrTemplateNotFound, name)
 }
 
 // RegisterString registers a template from a string source

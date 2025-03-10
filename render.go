@@ -541,7 +541,7 @@ var attributeCache = struct {
 // getAttribute gets an attribute from an object
 func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{}, error) {
 	if obj == nil {
-		return nil, fmt.Errorf("%w: cannot get attribute %s of nil", ErrInvalidAttribute, attr)
+		return nil, fmt.Errorf("%w: cannot get attribute '%s' of nil object", ErrInvalidAttribute, attr)
 	}
 
 	// Fast path for maps
@@ -549,7 +549,7 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 		if value, exists := objMap[attr]; exists {
 			return value, nil
 		}
-		return nil, fmt.Errorf("%w: map has no key %s", ErrInvalidAttribute, attr)
+		return nil, fmt.Errorf("%w: map does not contain key '%s'", ErrInvalidAttribute, attr)
 	}
 
 	// Get the reflect.Value and type for the object
@@ -564,7 +564,8 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 	
 	// Only use caching for struct types
 	if objValue.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("%w: %s is not a struct or map", ErrInvalidAttribute, attr)
+		return nil, fmt.Errorf("%w: cannot access attribute '%s' on %s (type %s)", 
+			ErrInvalidAttribute, attr, reflect.TypeOf(obj).String(), objValue.Kind())
 	}
 	
 	objType := objValue.Type()

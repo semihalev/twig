@@ -12,6 +12,10 @@ Twig is a fast, memory-efficient Twig template engine implementation for Go. It 
 - Template compilation for maximum performance
 - Whitespace control features (trim modifiers, spaceless tag)
 - Compatible with Go's standard library interfaces
+- Memory pooling for improved performance
+- Attribute caching to reduce reflection overhead
+- Detailed error reporting and debugging tools
+- Thread-safe and concurrency optimized
 
 ## Installation
 
@@ -281,6 +285,50 @@ By default, Twig runs in production mode:
 - Auto-reload is disabled to avoid unnecessary file system checks
 - Debug mode is disabled to reduce overhead
 
+## Debugging and Error Handling
+
+Twig provides enhanced error reporting and debugging tools to help during development:
+
+```go
+// Enable debug mode
+engine.SetDebug(true)
+
+// Set custom debug level for more detailed logging
+twig.SetDebugLevel(twig.DebugVerbose) // Options: DebugOff, DebugError, DebugWarning, DebugInfo, DebugVerbose
+
+// Redirect debug output to a file
+logFile, _ := os.Create("twig_debug.log")
+twig.SetDebugWriter(logFile)
+```
+
+### Debug Features
+
+When debug is enabled, you get:
+- **Enhanced Error Messages**: Includes template name, line number, and source context
+- **Performance Tracing**: Log rendering times for templates and template sections
+- **Variable Inspection**: Log template variable values and types
+- **Hierarchical Error Reporting**: Proper error propagation through template inheritance
+
+Example error output:
+```
+Error in template 'user_profile.twig' at line 45, column 12: 
+undefined variable "user"
+Line 45: <h1>Welcome, {{ user.name }}!</h1>
+                        ^
+```
+
+### Error Handling Best Practices
+
+```go
+// Render with proper error handling
+result, err := engine.Render("template.twig", context)
+if err != nil {
+    // Enhanced errors with full context
+    fmt.Printf("Rendering failed: %v\n", err)
+    return
+}
+```
+
 ## Whitespace Handling
 
 Twig templates can have significant whitespace that affects the rendered output. This implementation supports several mechanisms for controlling whitespace:
@@ -326,9 +374,12 @@ These features help you create cleaner output, especially when generating HTML w
 The library is designed with performance in mind:
 - Minimal memory allocations
 - Efficient parsing and rendering
+- Memory pooling for frequently allocated objects
+- Attribute caching to reduce reflection overhead
 - Template caching
 - Production/development mode toggle
 - Optimized filter chain processing
+- Thread-safe concurrent rendering
 
 ## Template Compilation
 

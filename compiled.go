@@ -44,7 +44,7 @@ type CompiledTemplate struct {
 // CompileTemplate compiles a parsed template into a compiled format
 func CompileTemplate(tmpl *Template) (*CompiledTemplate, error) {
 	if tmpl == nil {
-		return nil, fmt.Errorf("cannot compile nil template")
+		return nil, fmt.Errorf("%w: cannot compile nil template", ErrCompilation)
 	}
 
 	// Serialize the AST (Node tree)
@@ -54,8 +54,9 @@ func CompileTemplate(tmpl *Template) (*CompiledTemplate, error) {
 	// Encode the AST
 	if err := enc.Encode(tmpl.nodes); err != nil {
 		// If serialization fails, we'll still create the template but without AST
-		// and log the error
-		fmt.Printf("Warning: Failed to serialize AST: %v\n", err)
+		// and log the error with template details
+		fmt.Printf("Warning: Failed to serialize AST for template '%s': %v\n", 
+			tmpl.name, err)
 	}
 
 	// Store the template source, metadata, and AST
@@ -73,7 +74,7 @@ func CompileTemplate(tmpl *Template) (*CompiledTemplate, error) {
 // LoadFromCompiled loads a template from its compiled representation
 func LoadFromCompiled(compiled *CompiledTemplate, env *Environment, engine *Engine) (*Template, error) {
 	if compiled == nil {
-		return nil, fmt.Errorf("cannot load from nil compiled template")
+		return nil, fmt.Errorf("%w: cannot load from nil compiled template", ErrCompilation)
 	}
 
 	var nodes Node
@@ -87,7 +88,8 @@ func LoadFromCompiled(compiled *CompiledTemplate, env *Environment, engine *Engi
 		err := dec.Decode(&nodes)
 		if err != nil {
 			// Fall back to parsing if AST deserialization fails
-			fmt.Printf("Warning: Failed to deserialize AST, falling back to parsing: %v\n", err)
+			fmt.Printf("Warning: Failed to deserialize AST for template '%s', falling back to parsing: %v\n", 
+				compiled.Name, err)
 			nodes = nil
 		}
 	}

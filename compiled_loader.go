@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // CompiledLoader loads templates from compiled files
@@ -115,19 +116,24 @@ func (l *CompiledLoader) LoadAll(engine *Engine) error {
 	// Register loader with the engine
 	engine.RegisterLoader(l)
 
+	LogInfo("Loading all compiled templates from directory: %s", l.directory)
+
 	// List all files in the directory
 	files, err := ioutil.ReadDir(l.directory)
 	if err != nil {
-		return fmt.Errorf("failed to read directory: %w", err)
+		LogError(err, fmt.Sprintf("Failed to read directory: %s", l.directory))
+		return fmt.Errorf("failed to read compiled templates directory '%s': %w", l.directory, err)
 	}
 
 	// Collect errors during loading
 	var loadErrors []error
+	var loadedCount int
 	
 	// Load each compiled template
 	for _, file := range files {
 		// Skip directories
 		if file.IsDir() {
+			LogVerbose("Skipping directory: %s", file.Name())
 			continue
 		}
 
@@ -136,27 +142,40 @@ func (l *CompiledLoader) LoadAll(engine *Engine) error {
 		if ext == l.fileExtension {
 			// Get the template name (filename without extension)
 			name := file.Name()[:len(file.Name())-len(ext)]
+			LogInfo("Loading compiled template: %s", name)
 
 			// Load the template
 			if err := l.LoadCompiled(engine, name); err != nil {
 				// Collect the error but continue loading other templates
-				loadErrors = append(loadErrors, fmt.Errorf("failed to load compiled template %s: %w", name, err))
+				errWithContext := fmt.Errorf("failed to load compiled template '%s' from '%s': %w", 
+					name, filepath.Join(l.directory, file.Name()), err)
+				LogError(errWithContext)
+				loadErrors = append(loadErrors, errWithContext)
+			} else {
+				loadedCount++
+				LogInfo("Successfully loaded compiled template: %s", name)
 			}
+		} else {
+			LogVerbose("Skipping non-template file: %s", file.Name())
 		}
 	}
 
-	// If there were any errors, return a combined error
+	// If there were any errors, return a combined error with detailed information
 	if len(loadErrors) > 0 {
-		var errMsg string
+		LogWarning("Completed loading with %d success(es) and %d error(s)", loadedCount, len(loadErrors))
+		
+		errDetails := strings.Builder{}
+		errDetails.WriteString(fmt.Sprintf("%d out of %d template(s) failed to load:\n", 
+			len(loadErrors), loadedCount+len(loadErrors)))
+		
 		for i, err := range loadErrors {
-			if i > 0 {
-				errMsg += "; "
-			}
-			errMsg += err.Error()
+			errDetails.WriteString(fmt.Sprintf("  %d) %s\n", i+1, err.Error()))
 		}
-		return fmt.Errorf("errors loading compiled templates: %s", errMsg)
+		
+		return fmt.Errorf("errors loading compiled templates: %s", errDetails.String())
 	}
 
+	LogInfo("Successfully loaded %d compiled templates", loadedCount)
 	return nil
 }
 
