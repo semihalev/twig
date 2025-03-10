@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"regexp"
 	"strconv"
+	"strings"
 )
 
 // RenderContext holds the state during template rendering
@@ -94,6 +96,13 @@ func (ctx *RenderContext) CallMacro(w io.Writer, name string, args []interface{}
 
 // CallFunction calls a function with the given arguments
 func (ctx *RenderContext) CallFunction(name string, args []interface{}) (interface{}, error) {
+	// Check if it's a function in the environment
+	if ctx.env != nil {
+		if fn, ok := ctx.env.functions[name]; ok {
+			return fn(args...)
+		}
+	}
+	
 	// Check if it's a built-in function
 	switch name {
 	case "range":
@@ -104,13 +113,6 @@ func (ctx *RenderContext) CallFunction(name string, args []interface{}) (interfa
 		return ctx.callMaxFunction(args)
 	case "min":
 		return ctx.callMinFunction(args)
-	}
-	
-	// Check if it's a function in the environment
-	if ctx.env != nil {
-		if fn, ok := ctx.env.functions[name]; ok {
-			return fn(ctx, args)
-		}
 	}
 	
 	// Check if it's a macro
@@ -341,6 +343,32 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		
 		return ctx.evaluateBinaryOp(n.operator, left, right)
 		
+	case *ConditionalNode:
+		// Evaluate the condition
+		condResult, err := ctx.EvaluateExpression(n.condition)
+		if err != nil {
+			return nil, err
+		}
+		
+		// If condition is true, evaluate the true expression, otherwise evaluate the false expression
+		if ctx.toBool(condResult) {
+			return ctx.EvaluateExpression(n.trueExpr)
+		} else {
+			return ctx.EvaluateExpression(n.falseExpr)
+		}
+		
+	case *ArrayNode:
+		// Evaluate each item in the array
+		items := make([]interface{}, len(n.items))
+		for i, item := range n.items {
+			val, err := ctx.EvaluateExpression(item)
+			if err != nil {
+				return nil, err
+			}
+			items[i] = val
+		}
+		return items, nil
+		
 	case *FunctionNode:
 		// Check if it's a macro call
 		if macro, ok := ctx.GetMacro(n.name); ok {
@@ -376,6 +404,85 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		}
 		
 		return ctx.CallFunction(n.name, args)
+		
+	case *FilterNode:
+		// Evaluate the base value
+		value, err := ctx.EvaluateExpression(n.node)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Evaluate filter arguments
+		args := make([]interface{}, len(n.args))
+		for i, arg := range n.args {
+			val, err := ctx.EvaluateExpression(arg)
+			if err != nil {
+				return nil, err
+			}
+			args[i] = val
+		}
+		
+		// Look for the filter in the environment
+		if ctx.env != nil {
+			if filter, ok := ctx.env.filters[n.filter]; ok {
+				// Call the filter with the value and any arguments
+				return filter(value, args...)
+			}
+		}
+		
+		return nil, fmt.Errorf("filter '%s' not found", n.filter)
+		
+	case *TestNode:
+		// Evaluate the tested value
+		value, err := ctx.EvaluateExpression(n.node)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Evaluate test arguments
+		args := make([]interface{}, len(n.args))
+		for i, arg := range n.args {
+			val, err := ctx.EvaluateExpression(arg)
+			if err != nil {
+				return nil, err
+			}
+			args[i] = val
+		}
+		
+		// Look for the test in the environment
+		if ctx.env != nil {
+			if test, ok := ctx.env.tests[n.test]; ok {
+				// Call the test with the value and any arguments
+				return test(value, args...)
+			}
+		}
+		
+		return false, fmt.Errorf("test '%s' not found", n.test)
+		
+	case *UnaryNode:
+		// Evaluate the operand
+		operand, err := ctx.EvaluateExpression(n.node)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Apply the operator
+		switch n.operator {
+		case "not", "!":
+			return !ctx.toBool(operand), nil
+		case "+":
+			if num, ok := ctx.toNumber(operand); ok {
+				return num, nil
+			}
+			return 0, nil
+		case "-":
+			if num, ok := ctx.toNumber(operand); ok {
+				return -num, nil
+			}
+			return 0, nil
+		default:
+			return nil, fmt.Errorf("unsupported unary operator: %s", n.operator)
+		}
 		
 	default:
 		return nil, fmt.Errorf("unsupported expression type: %T", node)
@@ -528,9 +635,94 @@ func (ctx *RenderContext) evaluateBinaryOp(operator string, left, right interfac
 	case "~":
 		// String concatenation
 		return ctx.ToString(left) + ctx.ToString(right), nil
+		
+	case "in":
+		// Check if left is in right (for arrays, slices, maps, strings)
+		return ctx.contains(right, left)
+		
+	case "not in":
+		// Check if left is not in right
+		contains, err := ctx.contains(right, left)
+		if err != nil {
+			return false, err
+		}
+		return !contains, nil
+		
+	case "matches":
+		// Regular expression match
+		pattern := ctx.ToString(right)
+		str := ctx.ToString(left)
+		
+		// Compile the regex
+		regex, err := regexp.Compile(pattern)
+		if err != nil {
+			return false, fmt.Errorf("invalid regular expression: %s", err)
+		}
+		
+		return regex.MatchString(str), nil
+		
+	case "starts with":
+		// String prefix check
+		str := ctx.ToString(left)
+		prefix := ctx.ToString(right)
+		return strings.HasPrefix(str, prefix), nil
+		
+	case "ends with":
+		// String suffix check
+		str := ctx.ToString(left)
+		suffix := ctx.ToString(right)
+		return strings.HasSuffix(str, suffix), nil
 	}
 	
 	return nil, fmt.Errorf("unsupported binary operator: %s", operator)
+}
+
+// contains checks if a value is contained in a container (string, slice, array, map)
+func (ctx *RenderContext) contains(container, item interface{}) (bool, error) {
+	if container == nil {
+		return false, nil
+	}
+	
+	itemStr := ctx.ToString(item)
+	
+	// Handle different container types
+	switch c := container.(type) {
+	case string:
+		return strings.Contains(c, itemStr), nil
+	case []interface{}:
+		for _, v := range c {
+			if ctx.equals(v, item) {
+				return true, nil
+			}
+		}
+	case map[string]interface{}:
+		for k := range c {
+			if k == itemStr {
+				return true, nil
+			}
+		}
+	default:
+		// Try reflection for other types
+		rv := reflect.ValueOf(container)
+		switch rv.Kind() {
+		case reflect.String:
+			return strings.Contains(rv.String(), itemStr), nil
+		case reflect.Array, reflect.Slice:
+			for i := 0; i < rv.Len(); i++ {
+				if ctx.equals(rv.Index(i).Interface(), item) {
+					return true, nil
+				}
+			}
+		case reflect.Map:
+			for _, key := range rv.MapKeys() {
+				if ctx.equals(key.Interface(), item) {
+					return true, nil
+				}
+			}
+		}
+	}
+	
+	return false, nil
 }
 
 // equals checks if two values are equal

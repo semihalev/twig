@@ -55,10 +55,15 @@ func New() *Engine {
 		autoescape: true,
 	}
 
-	return &Engine{
+	engine := &Engine{
 		templates:   make(map[string]*Template),
 		environment: env,
 	}
+	
+	// Register the core extension by default
+	engine.AddExtension(&CoreExtension{})
+	
+	return engine
 }
 
 // RegisterLoader adds a template loader to the engine
@@ -168,6 +173,100 @@ func (e *Engine) RegisterTemplate(name string, template *Template) {
 	e.mu.Lock()
 	e.templates[name] = template
 	e.mu.Unlock()
+}
+
+// AddFilter registers a custom filter function
+func (e *Engine) AddFilter(name string, filter FilterFunc) {
+	e.environment.filters[name] = filter
+}
+
+// AddFunction registers a custom function
+func (e *Engine) AddFunction(name string, function FunctionFunc) {
+	e.environment.functions[name] = function
+}
+
+// AddTest registers a custom test function
+func (e *Engine) AddTest(name string, test TestFunc) {
+	e.environment.tests[name] = test
+}
+
+// AddGlobal adds a global variable to the template environment
+func (e *Engine) AddGlobal(name string, value interface{}) {
+	e.environment.globals[name] = value
+}
+
+// AddExtension registers a Twig extension
+func (e *Engine) AddExtension(extension Extension) {
+	e.environment.extensions = append(e.environment.extensions, extension)
+	
+	// Register all filters from the extension
+	for name, filter := range extension.GetFilters() {
+		e.environment.filters[name] = filter
+	}
+	
+	// Register all functions from the extension
+	for name, function := range extension.GetFunctions() {
+		e.environment.functions[name] = function
+	}
+	
+	// Register all tests from the extension
+	for name, test := range extension.GetTests() {
+		e.environment.tests[name] = test
+	}
+	
+	// Register all operators from the extension
+	for name, operator := range extension.GetOperators() {
+		e.environment.operators[name] = operator
+	}
+	
+	// Initialize the extension
+	extension.Initialize(e)
+}
+
+// CreateExtension creates a new custom extension with the given name
+func (e *Engine) CreateExtension(name string) *CustomExtension {
+	extension := &CustomExtension{
+		Name:      name,
+		Filters:   make(map[string]FilterFunc),
+		Functions: make(map[string]FunctionFunc),
+		Tests:     make(map[string]TestFunc),
+		Operators: make(map[string]OperatorFunc),
+	}
+	
+	return extension
+}
+
+// AddFilterToExtension adds a filter to a custom extension
+func (e *Engine) AddFilterToExtension(extension *CustomExtension, name string, filter FilterFunc) {
+	if extension.Filters == nil {
+		extension.Filters = make(map[string]FilterFunc)
+	}
+	extension.Filters[name] = filter
+}
+
+// AddFunctionToExtension adds a function to a custom extension
+func (e *Engine) AddFunctionToExtension(extension *CustomExtension, name string, function FunctionFunc) {
+	if extension.Functions == nil {
+		extension.Functions = make(map[string]FunctionFunc)
+	}
+	extension.Functions[name] = function
+}
+
+// AddTestToExtension adds a test to a custom extension
+func (e *Engine) AddTestToExtension(extension *CustomExtension, name string, test TestFunc) {
+	if extension.Tests == nil {
+		extension.Tests = make(map[string]TestFunc)
+	}
+	extension.Tests[name] = test
+}
+
+// RegisterExtension creates, configures and registers a custom extension
+func (e *Engine) RegisterExtension(name string, config func(*CustomExtension)) {
+	extension := e.CreateExtension(name)
+	if config != nil {
+		config(extension)
+	}
+	e.AddExtension(extension)
 }
 
 // NewTemplate creates a new template with the given parameters

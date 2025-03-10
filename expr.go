@@ -253,3 +253,125 @@ func (n *BinaryNode) Render(w io.Writer, ctx *RenderContext) error {
 	_, err = w.Write([]byte(str))
 	return err
 }
+
+// Render implementation for FilterNode
+func (n *FilterNode) Render(w io.Writer, ctx *RenderContext) error {
+	result, err := ctx.EvaluateExpression(n)
+	if err != nil {
+		return err
+	}
+	
+	str := ctx.ToString(result)
+	_, err = w.Write([]byte(str))
+	return err
+}
+
+// Render implementation for TestNode
+func (n *TestNode) Render(w io.Writer, ctx *RenderContext) error {
+	result, err := ctx.EvaluateExpression(n)
+	if err != nil {
+		return err
+	}
+	
+	str := ctx.ToString(result)
+	_, err = w.Write([]byte(str))
+	return err
+}
+
+// Render implementation for UnaryNode
+func (n *UnaryNode) Render(w io.Writer, ctx *RenderContext) error {
+	result, err := ctx.EvaluateExpression(n)
+	if err != nil {
+		return err
+	}
+	
+	str := ctx.ToString(result)
+	_, err = w.Write([]byte(str))
+	return err
+}
+
+// Render implementation for ConditionalNode
+func (n *ConditionalNode) Render(w io.Writer, ctx *RenderContext) error {
+	result, err := ctx.EvaluateExpression(n)
+	if err != nil {
+		return err
+	}
+	
+	str := ctx.ToString(result)
+	_, err = w.Write([]byte(str))
+	return err
+}
+
+// Render implementation for ArrayNode
+func (n *ArrayNode) Render(w io.Writer, ctx *RenderContext) error {
+	result, err := ctx.EvaluateExpression(n)
+	if err != nil {
+		return err
+	}
+	
+	str := ctx.ToString(result)
+	_, err = w.Write([]byte(str))
+	return err
+}
+
+// NewFilterNode creates a new filter node
+func NewFilterNode(node Node, filter string, args []Node, line int) *FilterNode {
+	return &FilterNode{
+		ExpressionNode: ExpressionNode{
+			exprType: ExprFilter,
+			line:     line,
+		},
+		node:   node,
+		filter: filter,
+		args:   args,
+	}
+}
+
+// NewTestNode creates a new test node
+func NewTestNode(node Node, test string, args []Node, line int) *TestNode {
+	return &TestNode{
+		ExpressionNode: ExpressionNode{
+			exprType: ExprTest,
+			line:     line,
+		},
+		node: node,
+		test: test,
+		args: args,
+	}
+}
+
+// NewUnaryNode creates a new unary operation node
+func NewUnaryNode(operator string, node Node, line int) *UnaryNode {
+	return &UnaryNode{
+		ExpressionNode: ExpressionNode{
+			exprType: ExprUnary,
+			line:     line,
+		},
+		operator: operator,
+		node:     node,
+	}
+}
+
+// NewConditionalNode creates a new conditional (ternary) node
+func NewConditionalNode(condition, trueExpr, falseExpr Node, line int) *ConditionalNode {
+	return &ConditionalNode{
+		ExpressionNode: ExpressionNode{
+			exprType: ExprConditional,
+			line:     line,
+		},
+		condition: condition,
+		trueExpr:  trueExpr,
+		falseExpr: falseExpr,
+	}
+}
+
+// NewArrayNode creates a new array node
+func NewArrayNode(items []Node, line int) *ArrayNode {
+	return &ArrayNode{
+		ExpressionNode: ExpressionNode{
+			exprType: ExprArray,
+			line:     line,
+		},
+		items: items,
+	}
+}
