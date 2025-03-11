@@ -28,12 +28,12 @@ func (ctx *RenderContext) ApplyFilter(name string, value interface{}, args ...in
 		if str == "" {
 			return "", nil
 		}
-		
+
 		// Preallocate with a reasonable estimate (slightly larger than original)
 		// This avoids most reallocations
 		var b strings.Builder
 		b.Grow(len(str) + len(str)/8)
-		
+
 		// Single-pass iteration is much more efficient than nested Replace calls
 		for _, c := range str {
 			switch c {
@@ -51,7 +51,7 @@ func (ctx *RenderContext) ApplyFilter(name string, value interface{}, args ...in
 				b.WriteRune(c)
 			}
 		}
-		
+
 		return b.String(), nil
 	}
 
@@ -81,13 +81,13 @@ func (ctx *RenderContext) DetectFilterChain(node Node) (Node, []FilterChainItem,
 
 	// Now that we know the depth, allocate the proper size slice
 	chain := make([]FilterChainItem, depth)
-	
+
 	// Traverse the chain again, but this time fill the slice in reverse order
 	// This avoids the O(n²) complexity of the previous implementation
 	currentNode = node
 	for i := depth - 1; i >= 0; i-- {
 		filterNode := currentNode.(*FilterNode) // Safe because we validated in first pass
-		
+
 		// Evaluate filter arguments
 		args := make([]interface{}, len(filterNode.args))
 		for j, arg := range filterNode.args {
@@ -97,17 +97,17 @@ func (ctx *RenderContext) DetectFilterChain(node Node) (Node, []FilterChainItem,
 			}
 			args[j] = val
 		}
-		
+
 		// Add to the chain in the correct position
 		chain[i] = FilterChainItem{
 			name: filterNode.filter,
 			args: args,
 		}
-		
+
 		// Continue with the next node
 		currentNode = filterNode.node
 	}
-	
+
 	// Return the base node and the chain
 	return currentNode, chain, nil
 }

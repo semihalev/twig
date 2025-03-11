@@ -11,10 +11,10 @@ import (
 func BenchmarkHtmlEscapeFilter(b *testing.B) {
 	ctx := NewRenderContext(nil, nil, nil)
 	defer ctx.Release()
-	
+
 	// Create a string with all the special characters
 	testString := `This is a "test" with <tags> & special 'characters' that need escaping`
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		result, _ := ctx.ApplyFilter("escape", testString)
@@ -25,7 +25,7 @@ func BenchmarkHtmlEscapeFilter(b *testing.B) {
 // Benchmark the original nested strings.Replace approach (for comparison)
 func BenchmarkHtmlEscapeOriginal(b *testing.B) {
 	testString := `This is a "test" with <tags> & special 'characters' that need escaping`
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		result := strings.Replace(
@@ -46,7 +46,7 @@ func BenchmarkHtmlEscapeOriginal(b *testing.B) {
 // Benchmark the standard library's html.EscapeString (for comparison)
 func BenchmarkHtmlEscapeStdLib(b *testing.B) {
 	testString := `This is a "test" with <tags> & special 'characters' that need escaping`
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		result := html.EscapeString(testString)
@@ -57,10 +57,10 @@ func BenchmarkHtmlEscapeStdLib(b *testing.B) {
 // Helper for filter chain benchmarks - builds a deep filter chain
 func createFilterChain(depth int) *FilterNode {
 	var node Node
-	
+
 	// Create a literal base node
 	node = NewLiteralNode("test", 1)
-	
+
 	// Add filters in sequence
 	for i := 0; i < depth; i++ {
 		// Use common filters
@@ -75,10 +75,10 @@ func createFilterChain(depth int) *FilterNode {
 		case 3:
 			filterName = "escape"
 		}
-		
+
 		node = NewFilterNode(node, filterName, nil, 1)
 	}
-	
+
 	return node.(*FilterNode)
 }
 
@@ -100,7 +100,7 @@ func benchmarkFilterChain(b *testing.B, depth int) {
 	env := &Environment{
 		filters: make(map[string]FilterFunc),
 	}
-	
+
 	// Add filters directly to the map since Environment doesn't expose AddFilter
 	env.filters["upper"] = func(value interface{}, args ...interface{}) (interface{}, error) {
 		return strings.ToUpper(value.(string)), nil
@@ -118,13 +118,13 @@ func benchmarkFilterChain(b *testing.B, depth int) {
 	env.filters["escape"] = func(value interface{}, args ...interface{}) (interface{}, error) {
 		return html.EscapeString(value.(string)), nil
 	}
-	
+
 	ctx := NewRenderContext(env, nil, nil)
 	defer ctx.Release()
-	
+
 	// Create a filter chain of the specified depth
 	filterNode := createFilterChain(depth)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = ctx.evaluateFilterNode(filterNode)

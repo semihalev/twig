@@ -145,7 +145,7 @@ func TestAttributeCacheLRUEviction(t *testing.T) {
 			typ:  reflect.TypeOf(types[i]),
 			attr: "name",
 		}
-		
+
 		_, found := attributeCache.m[typeKey]
 		if !found {
 			t.Errorf("Expected type %d to be in cache, but it wasn't", i)
