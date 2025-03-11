@@ -211,14 +211,33 @@ func (n *IfNode) Line() int {
 func (n *IfNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Evaluate each condition until we find one that's true
 	for i, condition := range n.conditions {
+		// Log before evaluation if debug is enabled
+		if IsDebugEnabled() {
+			LogDebug("Evaluating 'if' condition #%d at line %d", i+1, n.line)
+		}
+		
 		// Evaluate the condition
 		result, err := ctx.EvaluateExpression(condition)
 		if err != nil {
+			// Log error if debug is enabled
+			if IsDebugEnabled() {
+				LogError(err, "Error evaluating 'if' condition")
+			}
 			return err
 		}
 
+		// Log result if debug is enabled
+		conditionResult := ctx.toBool(result)
+		if IsDebugEnabled() {
+			LogDebug("Condition result: %v (type: %T, raw value: %v)", conditionResult, result, result)
+		}
+
 		// If condition is true, render the corresponding body
-		if ctx.toBool(result) {
+		if conditionResult {
+			if IsDebugEnabled() {
+				LogDebug("Entering 'if' block (condition #%d is true)", i+1)
+			}
+			
 			// Render all nodes in the body
 			for _, node := range n.bodies[i] {
 				err := node.Render(w, ctx)
@@ -232,6 +251,10 @@ func (n *IfNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// If no condition was true and we have an else branch, render it
 	if n.elseBranch != nil {
+		if IsDebugEnabled() {
+			LogDebug("Entering 'else' block (all conditions were false)")
+		}
+		
 		for _, node := range n.elseBranch {
 			err := node.Render(w, ctx)
 			if err != nil {
@@ -1270,6 +1293,11 @@ func (n *PrintNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Evaluate expression and write result
 	result, err := ctx.EvaluateExpression(n.expression)
 	if err != nil {
+		// Log error if debug is enabled
+		if IsDebugEnabled() {
+			message := fmt.Sprintf("Error evaluating print expression at line %d", n.line)
+			LogError(err, message)
+		}
 		return err
 	}
 
@@ -1295,6 +1323,11 @@ func (n *PrintNode) Render(w io.Writer, ctx *RenderContext) error {
 	default:
 		// Use the regular ToString for other types
 		str = ctx.ToString(result)
+	}
+
+	// Log the output if debug is enabled (verbose level)
+	if IsDebugEnabled() && debugger.level >= DebugVerbose {
+		LogVerbose("Print node rendering at line %d: value=%v, type=%T", n.line, result, result)
 	}
 
 	// Write the result as-is without modification

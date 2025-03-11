@@ -221,6 +221,27 @@ func (n *VariableNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
+	
+	// If debug is enabled, log variable access and value
+	if IsDebugEnabled() {
+		if value == nil {
+			// Log undefined variable at error level if debug is enabled
+			message := fmt.Sprintf("Variable lookup at line %d", n.line)
+			LogError(fmt.Errorf("%w: %s", ErrUndefinedVar, n.name), message)
+			
+			// If in strict debug mode with error level, return an error for undefined variables
+			if debugger.level >= DebugError && ctx.engine != nil && ctx.engine.debug {
+				templateName := "unknown"
+				if ctx.engine.currentTemplate != "" {
+					templateName = ctx.engine.currentTemplate
+				}
+				return NewError(fmt.Errorf("%w: %s", ErrUndefinedVar, n.name), templateName, n.line, 0, "")
+			}
+		} else if debugger.level >= DebugVerbose {
+			// Log defined variables at verbose level
+			LogVerbose("Variable access at line %d: %s = %v (type: %T)", n.line, n.name, value, value)
+		}
+	}
 
 	str := ctx.ToString(value)
 	_, err = w.Write([]byte(str))

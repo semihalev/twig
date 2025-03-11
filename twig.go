@@ -12,12 +12,14 @@ import (
 
 // Engine represents the Twig template engine
 type Engine struct {
-	templates   map[string]*Template
-	mu          sync.RWMutex
-	autoReload  bool
-	strictVars  bool
-	loaders     []Loader
-	environment *Environment
+	templates       map[string]*Template
+	mu              sync.RWMutex
+	autoReload      bool
+	strictVars      bool
+	loaders         []Loader
+	environment     *Environment
+	debug           bool
+	currentTemplate string // Tracks the name of the template currently being rendered
 
 	// Test helper - override Parse function
 	Parse func(source string) (*Template, error)
@@ -91,6 +93,7 @@ func (e *Engine) SetStrictVars(strictVars bool) {
 // SetDebug enables or disables debug mode
 func (e *Engine) SetDebug(enabled bool) {
 	e.environment.debug = enabled
+	e.debug = enabled
 
 	// Set the debug level based on the debug flag
 	if enabled {
@@ -109,6 +112,7 @@ func (e *Engine) SetCache(enabled bool) {
 // This sets debug mode on, enables auto-reload, and disables caching
 func (e *Engine) SetDevelopmentMode(enabled bool) {
 	e.environment.debug = enabled
+	e.debug = enabled
 	e.autoReload = enabled
 	e.environment.cache = !enabled
 }
@@ -116,6 +120,14 @@ func (e *Engine) SetDevelopmentMode(enabled bool) {
 // Render renders a template with the given context
 func (e *Engine) Render(name string, context map[string]interface{}) (string, error) {
 	LogInfo("Rendering template: %s", name)
+
+	// Store current template name and previous template name
+	prevTemplate := e.currentTemplate
+	e.currentTemplate = name
+	defer func() {
+		// Restore previous template name when we're done
+		e.currentTemplate = prevTemplate
+	}()
 
 	template, err := e.Load(name)
 	if err != nil {
@@ -155,6 +167,14 @@ func (e *Engine) Render(name string, context map[string]interface{}) (string, er
 // RenderTo renders a template to a writer
 func (e *Engine) RenderTo(w io.Writer, name string, context map[string]interface{}) error {
 	LogInfo("Rendering template to writer: %s", name)
+
+	// Store current template name and previous template name
+	prevTemplate := e.currentTemplate
+	e.currentTemplate = name
+	defer func() {
+		// Restore previous template name when we're done
+		e.currentTemplate = prevTemplate
+	}()
 
 	template, err := e.Load(name)
 	if err != nil {
