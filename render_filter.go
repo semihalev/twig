@@ -23,18 +23,36 @@ func (ctx *RenderContext) ApplyFilter(name string, value interface{}, args ...in
 	// Handle built-in filters for macro compatibility
 	switch name {
 	case "e", "escape":
-		// Simple HTML escape
-		return strings.Replace(
-			strings.Replace(
-				strings.Replace(
-					strings.Replace(
-						strings.Replace(
-							ctx.ToString(value),
-							"&", "&amp;", -1),
-						"<", "&lt;", -1),
-					">", "&gt;", -1),
-				"\"", "&quot;", -1),
-			"'", "&#39;", -1), nil
+		// Optimized HTML escape using a single pass with strings.Builder
+		str := ctx.ToString(value)
+		if str == "" {
+			return "", nil
+		}
+		
+		// Preallocate with a reasonable estimate (slightly larger than original)
+		// This avoids most reallocations
+		var b strings.Builder
+		b.Grow(len(str) + len(str)/8)
+		
+		// Single-pass iteration is much more efficient than nested Replace calls
+		for _, c := range str {
+			switch c {
+			case '&':
+				b.WriteString("&amp;")
+			case '<':
+				b.WriteString("&lt;")
+			case '>':
+				b.WriteString("&gt;")
+			case '"':
+				b.WriteString("&quot;")
+			case '\'':
+				b.WriteString("&#39;")
+			default:
+				b.WriteRune(c)
+			}
+		}
+		
+		return b.String(), nil
 	}
 
 	return nil, fmt.Errorf("filter '%s' not found", name)
@@ -49,40 +67,48 @@ type FilterChainItem struct {
 // DetectFilterChain analyzes a filter node and extracts all filters in the chain
 // Returns the base node and a slice of all filters to be applied
 func (ctx *RenderContext) DetectFilterChain(node Node) (Node, []FilterChainItem, error) {
-	// Preallocate with a reasonable capacity for typical filter chains
-	chain := make([]FilterChainItem, 0, 4)
+	// First, count the depth of the filter chain to properly allocate
+	depth := 0
 	currentNode := node
-
-	// Traverse down the filter chain, collecting filters as we go
 	for {
-		// Check if the current node is a filter node
 		filterNode, isFilter := currentNode.(*FilterNode)
 		if !isFilter {
-			// We've reached the base value node
 			break
 		}
+		depth++
+		currentNode = filterNode.node
+	}
 
+	// Now that we know the depth, allocate the proper size slice
+	chain := make([]FilterChainItem, depth)
+	
+	// Traverse the chain again, but this time fill the slice in reverse order
+	// This avoids the O(n²) complexity of the previous implementation
+	currentNode = node
+	for i := depth - 1; i >= 0; i-- {
+		filterNode := currentNode.(*FilterNode) // Safe because we validated in first pass
+		
 		// Evaluate filter arguments
 		args := make([]interface{}, len(filterNode.args))
-		for i, arg := range filterNode.args {
+		for j, arg := range filterNode.args {
 			val, err := ctx.EvaluateExpression(arg)
 			if err != nil {
 				return nil, nil, err
 			}
-			args[i] = val
+			args[j] = val
 		}
-
-		// Insert this filter at the beginning of the chain
-		// (prepend to maintain order)
-		chain = append([]FilterChainItem{{
+		
+		// Add to the chain in the correct position
+		chain[i] = FilterChainItem{
 			name: filterNode.filter,
 			args: args,
-		}}, chain...)
-
-		// Continue with the next node in the chain
+		}
+		
+		// Continue with the next node
 		currentNode = filterNode.node
 	}
-
+	
+	// Return the base node and the chain
 	return currentNode, chain, nil
 }
 
