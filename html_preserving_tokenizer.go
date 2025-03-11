@@ -10,7 +10,10 @@ import (
 // that properly preserves HTML content while correctly handling Twig syntax.
 // It treats everything outside of Twig tags as raw TEXT tokens.
 func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
-	var tokens []Token
+	// Pre-allocate tokens with estimated capacity based on source length
+	// This avoids frequent slice reallocations
+	estimatedTokenCount := len(p.source) / 20 // Rough estimate: one token per 20 chars
+	tokens := make([]Token, 0, estimatedTokenCount)
 	var currentPosition int
 	line := 1
 
@@ -25,6 +28,9 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 			length  int
 		}
 
+		// Use a single substring for all pattern searches to reduce allocations
+		remainingSource := p.source[currentPosition:]
+		
 		// Check for all possible tag starts, including whitespace control variants
 		positions := []struct {
 			pos     int
@@ -32,11 +38,11 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 			ttype   int
 			length  int
 		}{
-			{strings.Index(p.source[currentPosition:], "{{-"), "{{-", TOKEN_VAR_START_TRIM, 3},
-			{strings.Index(p.source[currentPosition:], "{{"), "{{", TOKEN_VAR_START, 2},
-			{strings.Index(p.source[currentPosition:], "{%-"), "{%-", TOKEN_BLOCK_START_TRIM, 3},
-			{strings.Index(p.source[currentPosition:], "{%"), "{%", TOKEN_BLOCK_START, 2},
-			{strings.Index(p.source[currentPosition:], "{#"), "{#", TOKEN_COMMENT_START, 2},
+			{strings.Index(remainingSource, "{{-"), "{{-", TOKEN_VAR_START_TRIM, 3},
+			{strings.Index(remainingSource, "{{"), "{{", TOKEN_VAR_START, 2},
+			{strings.Index(remainingSource, "{%-"), "{%-", TOKEN_BLOCK_START_TRIM, 3},
+			{strings.Index(remainingSource, "{%"), "{%", TOKEN_BLOCK_START, 2},
+			{strings.Index(remainingSource, "{#"), "{#", TOKEN_COMMENT_START, 2},
 		}
 
 		// Find the closest tag
@@ -377,6 +383,22 @@ func tokenizeComplexObject(objStr string, tokens *[]Token, line int) {
 
 // tokenizeObjectContents parses key-value pairs within an object
 func tokenizeObjectContents(content string, tokens *[]Token, line int) {
+	// Estimate the number of key-value pairs to pre-allocate token space
+	commaCount := 0
+	for i := 0; i < len(content); i++ {
+		if content[i] == ',' {
+			commaCount++
+		}
+	}
+	
+	// Pre-grow the tokens slice: each key-value pair creates about 4 tokens on average
+	estimatedTokenCount := len(*tokens) + (commaCount+1)*4
+	if cap(*tokens) < estimatedTokenCount {
+		newTokens := make([]Token, len(*tokens), estimatedTokenCount)
+		copy(newTokens, *tokens)
+		*tokens = newTokens
+	}
+	
 	// State tracking
 	inSingleQuote := false
 	inDoubleQuote := false
@@ -394,13 +416,18 @@ func tokenizeObjectContents(content string, tokens *[]Token, line int) {
 		if (isComma || atEnd) && inObject == 0 && inArray == 0 && !inSingleQuote && !inDoubleQuote {
 			// We've found the end of a key-value pair
 			if colonPos != -1 {
-				// Extract and add the key and value
-				keyStr := strings.TrimSpace(content[start:colonPos])
-				valueStr := strings.TrimSpace(content[colonPos+1 : i])
+				// Extract the key and value - reuse same slice memory
+				keyStr := content[start:colonPos]
+				keyStr = strings.TrimSpace(keyStr)
+				valueStr := content[colonPos+1:i]
+				valueStr = strings.TrimSpace(valueStr)
 
+				// Check key characteristics once to avoid multiple prefix/suffix checks
+				keyHasSingleQuotes := len(keyStr) >= 2 && keyStr[0] == '\'' && keyStr[len(keyStr)-1] == '\''
+				keyHasDoubleQuotes := len(keyStr) >= 2 && keyStr[0] == '"' && keyStr[len(keyStr)-1] == '"'
+				
 				// Process the key
-				if (strings.HasPrefix(keyStr, "'") && strings.HasSuffix(keyStr, "'")) ||
-					(strings.HasPrefix(keyStr, "\"") && strings.HasSuffix(keyStr, "\"")) {
+				if keyHasSingleQuotes || keyHasDoubleQuotes {
 					// Quoted key - add as a string token
 					*tokens = append(*tokens, Token{
 						Type:  TOKEN_STRING,
@@ -412,23 +439,31 @@ func tokenizeObjectContents(content string, tokens *[]Token, line int) {
 					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: keyStr, Line: line})
 				}
 
-				// Add colon separator
+				// Add colon separator - using static string to avoid allocation
 				*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: ":", Line: line})
 
+				// Check value characteristics once
+				valueHasSingleQuotes := len(valueStr) >= 2 && valueStr[0] == '\'' && valueStr[len(valueStr)-1] == '\''
+				valueHasDoubleQuotes := len(valueStr) >= 2 && valueStr[0] == '"' && valueStr[len(valueStr)-1] == '"'
+				valueStartsWithBrace := len(valueStr) >= 2 && valueStr[0] == '{'
+				valueEndsWithBrace := len(valueStr) >= 1 && valueStr[len(valueStr)-1] == '}'
+				valueStartsWithBracket := len(valueStr) >= 2 && valueStr[0] == '['
+				valueEndsWithBracket := len(valueStr) >= 1 && valueStr[len(valueStr)-1] == ']'
+				
 				// Process the value - more complex values need special handling
-				if strings.HasPrefix(valueStr, "{") && strings.HasSuffix(valueStr, "}") {
+				if valueStartsWithBrace && valueEndsWithBrace {
 					// Nested object
 					*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "{", Line: line})
+					// Pass substring directly to avoid another allocation
 					tokenizeObjectContents(valueStr[1:len(valueStr)-1], tokens, line)
 					*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "}", Line: line})
-				} else if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") {
+				} else if valueStartsWithBracket && valueEndsWithBracket {
 					// Array
 					*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "[", Line: line})
 					tokenizeArrayElements(valueStr[1:len(valueStr)-1], tokens, line)
 					*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "]", Line: line})
-				} else if (strings.HasPrefix(valueStr, "'") && strings.HasSuffix(valueStr, "'")) ||
-					(strings.HasPrefix(valueStr, "\"") && strings.HasSuffix(valueStr, "\"")) {
-					// String literal
+				} else if valueHasSingleQuotes || valueHasDoubleQuotes {
+					// String literal - reuse memory by slicing
 					*tokens = append(*tokens, Token{
 						Type:  TOKEN_STRING,
 						Value: valueStr[1 : len(valueStr)-1], // Remove quotes
@@ -448,7 +483,7 @@ func tokenizeObjectContents(content string, tokens *[]Token, line int) {
 					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: valueStr, Line: line})
 				}
 
-				// Add comma if needed
+				// Add comma if needed - using static string to avoid allocation
 				if isComma && i < len(content)-1 {
 					*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: ",", Line: line})
 				}
@@ -500,6 +535,15 @@ func tokenizeArrayElements(arrStr string, tokens *[]Token, line int) {
 	// Split the array elements, respecting nested structures
 	elements := splitArrayElements(arrStr)
 
+	// Pre-grow the tokens slice to minimize reallocations
+	// Estimate: each element adds at least 1 token plus commas between elements
+	estimatedTokenCount := len(*tokens) + len(elements)*2
+	if cap(*tokens) < estimatedTokenCount {
+		newTokens := make([]Token, len(*tokens), estimatedTokenCount)
+		copy(newTokens, *tokens)
+		*tokens = newTokens
+	}
+
 	// Add each element with appropriate tokens
 	for i, element := range elements {
 		element = strings.TrimSpace(element)
@@ -508,19 +552,27 @@ func tokenizeArrayElements(arrStr string, tokens *[]Token, line int) {
 		}
 
 		// Process the element based on its type
-		if strings.HasPrefix(element, "{") && strings.HasSuffix(element, "}") {
+		firstChar := byte(0)
+		lastChar := byte(0)
+		if len(element) > 0 {
+			firstChar = element[0]
+			lastChar = element[len(element)-1]
+		}
+
+		if firstChar == '{' && lastChar == '}' {
 			// Nested object
 			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "{", Line: line})
+			// Pass substring directly to avoid another allocation
 			tokenizeObjectContents(element[1:len(element)-1], tokens, line)
 			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "}", Line: line})
-		} else if strings.HasPrefix(element, "[") && strings.HasSuffix(element, "]") {
+		} else if firstChar == '[' && lastChar == ']' {
 			// Nested array
 			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "[", Line: line})
 			tokenizeArrayElements(element[1:len(element)-1], tokens, line)
 			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "]", Line: line})
-		} else if (strings.HasPrefix(element, "'") && strings.HasSuffix(element, "'")) ||
-			(strings.HasPrefix(element, "\"") && strings.HasSuffix(element, "\"")) {
-			// String literal
+		} else if (firstChar == '\'' && lastChar == '\'') ||
+			(firstChar == '"' && lastChar == '"') {
+			// String literal - reuse memory by slicing rather than copying
 			*tokens = append(*tokens, Token{
 				Type:  TOKEN_STRING,
 				Value: element[1 : len(element)-1], // Remove quotes
@@ -549,8 +601,20 @@ func tokenizeArrayElements(arrStr string, tokens *[]Token, line int) {
 
 // splitArrayElements splits array elements respecting nested structures
 func splitArrayElements(arrStr string) []string {
-	var elements []string
+	// Estimate the number of elements to pre-allocate the slice
+	commaCount := 0
+	for i := 0; i < len(arrStr); i++ {
+		if arrStr[i] == ',' {
+			commaCount++
+		}
+	}
+	// Allocate with capacity for estimated number of elements
+	elements := make([]string, 0, commaCount+1)
+	
+	// Pre-allocate the string builder with a reasonable capacity
+	// to avoid frequent reallocations
 	var current strings.Builder
+	current.Grow(len(arrStr) / (commaCount + 1)) // Average element size
 
 	inSingleQuote := false
 	inDoubleQuote := false
@@ -784,8 +848,20 @@ func (p *Parser) tokenizeAndAppend(source string, tokens *[]Token, line int) {
 // tokenizeExpression handles tokenizing expressions inside Twig tags
 func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 	// This is a tokenizer for expressions that handles Twig syntax properly
+	
+	// First, pre-grow the tokens slice to minimize reallocations
+	// Estimate: one token per 5 characters in the expression (rough average)
+	estimatedTokenCount := len(*tokens) + len(expr)/5 + 1
+	if cap(*tokens) < estimatedTokenCount {
+		newTokens := make([]Token, len(*tokens), estimatedTokenCount)
+		copy(newTokens, *tokens)
+		*tokens = newTokens
+	}
 
+	// Pre-allocate the string builder with a reasonable capacity
 	var currentToken strings.Builder
+	currentToken.Grow(16) // Reasonable size for most identifiers/numbers
+	
 	var inString bool
 	var stringDelimiter byte
 
@@ -805,11 +881,14 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 				stringDelimiter = c
 				// First add any accumulated token
 				if currentToken.Len() > 0 {
+					// Reuse the tokenValue to avoid extra allocations
+					tokenValue := currentToken.String()
+					
 					// Check if the token is a number
-					if onlyContainsDigitsOrDot(currentToken.String()) {
-						*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: currentToken.String(), Line: line})
+					if onlyContainsDigitsOrDot(tokenValue) {
+						*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
 					} else {
-						*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: currentToken.String(), Line: line})
+						*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
 					}
 					currentToken.Reset()
 				}
@@ -830,16 +909,17 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 		if c == ':' {
 			// First, add any accumulated token
 			if currentToken.Len() > 0 {
+				tokenValue := currentToken.String()
 				// Check if the token is a number
-				if onlyContainsDigitsOrDot(currentToken.String()) {
-					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: currentToken.String(), Line: line})
+				if onlyContainsDigitsOrDot(tokenValue) {
+					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
 				} else {
-					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: currentToken.String(), Line: line})
+					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
 				}
 				currentToken.Reset()
 			}
 
-			// Add the colon token
+			// Add the colon token - reuse static string to avoid allocation
 			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: ":", Line: line})
 			continue
 		}
@@ -848,20 +928,37 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 		if isOperator(c) {
 			// First, add any accumulated token
 			if currentToken.Len() > 0 {
+				tokenValue := currentToken.String()
 				// Check if the token is a number
-				if onlyContainsDigitsOrDot(currentToken.String()) {
-					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: currentToken.String(), Line: line})
+				if onlyContainsDigitsOrDot(tokenValue) {
+					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
 				} else {
-					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: currentToken.String(), Line: line})
+					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
 				}
 				currentToken.Reset()
 			}
 
 			// Check for two-character operators
 			if i+1 < len(expr) {
-				twoChar := string(c) + string(expr[i+1])
-				if twoChar == "==" || twoChar == "!=" || twoChar == ">=" || twoChar == "<=" ||
-					twoChar == "&&" || twoChar == "||" || twoChar == "??" {
+				nextChar := expr[i+1]
+				isTwoChar := false
+				var twoChar string
+				
+				// Avoiding string concatenation and using direct comparison
+				if (c == '=' && nextChar == '=') ||
+				   (c == '!' && nextChar == '=') ||
+				   (c == '>' && nextChar == '=') ||
+				   (c == '<' && nextChar == '=') ||
+				   (c == '&' && nextChar == '&') ||
+				   (c == '|' && nextChar == '|') ||
+				   (c == '?' && nextChar == '?') {
+					
+					// Only allocate the string when we need it
+					twoChar = string([]byte{c, nextChar})
+					isTwoChar = true
+				}
+				
+				if isTwoChar {
 					*tokens = append(*tokens, Token{Type: TOKEN_OPERATOR, Value: twoChar, Line: line})
 					i++ // Skip the next character
 					continue
@@ -869,7 +966,7 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 			}
 
 			// Add the single-character operator token
-			*tokens = append(*tokens, Token{Type: TOKEN_OPERATOR, Value: string(c), Line: line})
+			*tokens = append(*tokens, Token{Type: TOKEN_OPERATOR, Value: string([]byte{c}), Line: line})
 			continue
 		}
 
@@ -877,17 +974,18 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 		if isPunctuation(c) {
 			// First, add any accumulated token
 			if currentToken.Len() > 0 {
+				tokenValue := currentToken.String()
 				// Check if the token is a number
-				if onlyContainsDigitsOrDot(currentToken.String()) {
-					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: currentToken.String(), Line: line})
+				if onlyContainsDigitsOrDot(tokenValue) {
+					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
 				} else {
-					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: currentToken.String(), Line: line})
+					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
 				}
 				currentToken.Reset()
 			}
 
-			// Add the punctuation token
-			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: string(c), Line: line})
+			// Add the punctuation token - reuse static chars to reduce allocations
+			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: string([]byte{c}), Line: line})
 			continue
 		}
 
@@ -895,11 +993,12 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 		if isWhitespace(c) {
 			// Add any accumulated token
 			if currentToken.Len() > 0 {
+				tokenValue := currentToken.String()
 				// Check if the token is a number
-				if onlyContainsDigitsOrDot(currentToken.String()) {
-					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: currentToken.String(), Line: line})
+				if onlyContainsDigitsOrDot(tokenValue) {
+					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
 				} else {
-					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: currentToken.String(), Line: line})
+					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
 				}
 				currentToken.Reset()
 			}
@@ -912,6 +1011,9 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 				isDigit(c) ||
 				(c == '.' && i+1 < len(expr) && isDigit(expr[i+1]))) { // Regular number or decimal
 
+			// Pre-allocate for numeric tokens
+			currentToken.Grow(10) // Reasonable for most numbers
+			
 			// Handle negative sign if present
 			if c == '-' {
 				currentToken.WriteByte(c)
@@ -949,17 +1051,20 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 
 	// Add any final token
 	if currentToken.Len() > 0 {
+		tokenValue := currentToken.String()
+		
 		// Check if the final token is a special keyword
-		if currentToken.String() == "true" || currentToken.String() == "false" ||
-			currentToken.String() == "null" || currentToken.String() == "nil" {
+		// Use direct comparison instead of multiple string checks
+		if tokenValue == "true" || tokenValue == "false" ||
+			tokenValue == "null" || tokenValue == "nil" {
 			// These are literals, not names
-			*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: currentToken.String(), Line: line})
-		} else if onlyContainsDigitsOrDot(currentToken.String()) {
+			*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
+		} else if onlyContainsDigitsOrDot(tokenValue) {
 			// It's a number
-			*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: currentToken.String(), Line: line})
+			*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
 		} else {
 			// Regular name token
-			*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: currentToken.String(), Line: line})
+			*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
 		}
 	}
 }

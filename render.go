@@ -893,9 +893,12 @@ type attributeCacheEntry struct {
 // attributeCache caches attribute lookups by type and attribute name
 var attributeCache = struct {
 	sync.RWMutex
-	m map[attributeCacheKey]attributeCacheEntry
+	m        map[attributeCacheKey]attributeCacheEntry
+	maxSize  int // Maximum number of entries to cache
+	currSize int // Current number of entries
 }{
-	m: make(map[attributeCacheKey]attributeCacheEntry),
+	m:       make(map[attributeCacheKey]attributeCacheEntry),
+	maxSize: 1000, // Limit cache to 1000 entries to prevent unbounded growth
 }
 
 // getItem gets an item from a container (array, slice, map) by index or key
@@ -1029,6 +1032,18 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 		// Double-check if another goroutine added it while we were waiting
 		entry, found = attributeCache.m[key]
 		if !found {
+			// Check if cache has reached maximum size
+			if attributeCache.currSize >= attributeCache.maxSize {
+				// Cache is full, remove a random entry
+				// This is a simple strategy - in the future, we could use LRU
+				for k := range attributeCache.m {
+					delete(attributeCache.m, k)
+					attributeCache.currSize--
+					// Just remove one entry for now
+					break
+				}
+			}
+			
 			entry = attributeCacheEntry{
 				fieldIndex:  -1,
 				methodIndex: -1,
@@ -1058,6 +1073,7 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 
 			// Store in cache
 			attributeCache.m[key] = entry
+			attributeCache.currSize++
 		}
 		attributeCache.Unlock()
 	}

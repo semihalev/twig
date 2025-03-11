@@ -8,8 +8,8 @@ Environment:
 
 | Engine      | Time (µs/op) | Memory Usage (KB/op) |
 |-------------|--------------|----------------------|
-| Twig        | 7.00         | 1.25                 |
-| Go Template | 10.84         | 1.35                 |
+| Twig        | 6.69         | 1.28                 |
+| Go Template | 11.38         | 1.43                 |
 
-Twig is 0.65x faster than Go's template engine.
-Twig uses 0.92x less memory than Go's template engine.
+Twig is 0.59x faster than Go's template engine.
+Twig uses 0.89x less memory than Go's template engine.
