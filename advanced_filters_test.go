@@ -202,6 +202,10 @@ func TestAdvancedFilters(t *testing.T) {
 // Note: Some of these tests are aspirational and test features that may not be fully
 // implemented yet. They serve as a roadmap for future development.
 func TestFilterCombinations(t *testing.T) {
+	// Enable debug logging
+	SetDebugLevel(DebugVerbose)
+	defer SetDebugLevel(DebugOff)
+	
 	engine := New()
 
 	tests := []struct {
@@ -228,6 +232,19 @@ func TestFilterCombinations(t *testing.T) {
 		{
 			name:     "Filter in for loop",
 			source:   "{% for item in items|sort %}{{ item }}{% endfor %}",
+			context:  map[string]interface{}{"items": []string{"b", "c", "a"}},
+			expected: "abc",
+		},
+		// Additional test variations to debug the sort filter in for loops
+		{
+			name:     "Direct sort with simplified output",
+			source:   "{% for item in ['b', 'c', 'a']|sort %}{{ item }}{% endfor %}",
+			context:  nil,
+			expected: "abc",
+		},
+		{
+			name:     "Sort filter with explicit join",
+			source:   "{% set sorted = items|sort %}{% for item in sorted %}{{ item }}{% endfor %}",
 			context:  map[string]interface{}{"items": []string{"b", "c", "a"}},
 			expected: "abc",
 		},

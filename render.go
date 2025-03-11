@@ -523,6 +523,21 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		}
 
 		return ctx.getAttribute(obj, attrStr)
+		
+	case *GetItemNode:
+		// Evaluate the container (array, slice, map)
+		container, err := ctx.EvaluateExpression(n.node)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Evaluate the item index/key
+		index, err := ctx.EvaluateExpression(n.item)
+		if err != nil {
+			return nil, err
+		}
+		
+		return ctx.getItem(container, index)
 
 	case *BinaryNode:
 		// First, evaluate the left side of the expression
@@ -589,6 +604,30 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		}
 
 		return items, nil
+
+	case *HashNode:
+		// Evaluate each key-value pair in the hash
+		result := make(map[string]interface{})
+		for k, v := range n.items {
+			// Evaluate the key
+			keyVal, err := ctx.EvaluateExpression(k)
+			if err != nil {
+				return nil, err
+			}
+			
+			// Convert key to string
+			key := ctx.ToString(keyVal)
+			
+			// Evaluate the value
+			val, err := ctx.EvaluateExpression(v)
+			if err != nil {
+				return nil, err
+			}
+			
+			// Store in the map
+			result[key] = val
+		}
+		return result, nil
 
 	case *FunctionNode:
 		// Check if it's a macro call
@@ -806,6 +845,83 @@ var attributeCache = struct {
 	m map[attributeCacheKey]attributeCacheEntry
 }{
 	m: make(map[attributeCacheKey]attributeCacheEntry),
+}
+
+// getItem gets an item from a container (array, slice, map) by index or key
+func (ctx *RenderContext) getItem(container, index interface{}) (interface{}, error) {
+	if container == nil {
+		return nil, nil
+	}
+	
+	// Convert numeric indices to int for consistent handling
+	idx, _ := ctx.toNumber(index)
+	intIndex := int(idx)
+	
+	// Handle different container types
+	switch c := container.(type) {
+	case []interface{}:
+		// Check bounds
+		if intIndex < 0 || intIndex >= len(c) {
+			return nil, fmt.Errorf("array index out of bounds: %d", intIndex)
+		}
+		return c[intIndex], nil
+		
+	case map[string]interface{}:
+		// Try string key
+		if strKey, ok := index.(string); ok {
+			if value, exists := c[strKey]; exists {
+				return value, nil
+			}
+		}
+		
+		// Try numeric key as string
+		strKey := ctx.ToString(index)
+		if value, exists := c[strKey]; exists {
+			return value, nil
+		}
+		
+		return nil, nil // Nil for missing keys
+		
+	default:
+		// Use reflection for other types
+		v := reflect.ValueOf(container)
+		
+		switch v.Kind() {
+		case reflect.Slice, reflect.Array:
+			// Check bounds
+			if intIndex < 0 || intIndex >= v.Len() {
+				return nil, fmt.Errorf("array index out of bounds: %d", intIndex)
+			}
+			return v.Index(intIndex).Interface(), nil
+			
+		case reflect.Map:
+			// Try to find the key
+			var mapKey reflect.Value
+			
+			// Convert the index to the map's key type if possible
+			keyType := v.Type().Key()
+			indexValue := reflect.ValueOf(index)
+			
+			if indexValue.Type().ConvertibleTo(keyType) {
+				mapKey = indexValue.Convert(keyType)
+			} else {
+				// Try string conversion for the key
+				strKey := ctx.ToString(index)
+				if reflect.TypeOf(strKey).ConvertibleTo(keyType) {
+					mapKey = reflect.ValueOf(strKey).Convert(keyType)
+				} else {
+					return nil, nil // Key type mismatch
+				}
+			}
+			
+			mapValue := v.MapIndex(mapKey)
+			if mapValue.IsValid() {
+				return mapValue.Interface(), nil
+			}
+		}
+	}
+	
+	return nil, nil // Default nil for non-indexable types
 }
 
 // getAttribute gets an attribute from an object

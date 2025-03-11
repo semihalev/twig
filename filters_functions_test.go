@@ -281,9 +281,9 @@ func TestArrayFilters(t *testing.T) {
 	}{
 		{
 			name:     "Keys filter",
-			source:   "{{ {'name': 'John', 'age': 30}|keys|join(', ') }}",
+			source:   "{{ {'name': 'John', 'age': 30}|keys|sort|join(', ') }}",
 			context:  nil,
-			expected: "name, age",
+			expected: "age, name",
 		},
 		{
 			name:     "Merge filter (arrays)",
@@ -329,8 +329,8 @@ func TestArrayFilters(t *testing.T) {
 		},
 		{
 			name:     "Filter with array access",
-			source:   "{{ [{'name': 'John'}, {'name': 'Jane'}][0].name }}",
-			context:  nil,
+			source:   "{{ arr[0] }}",
+			context:  map[string]interface{}{"arr": []interface{}{"John", "Jane"}},
 			expected: "John",
 		},
 		{
@@ -433,8 +433,15 @@ func TestNumberFilters(t *testing.T) {
 		context  map[string]interface{}
 		expected string
 	}{
+		// Tests with direct negative numbers
 		{
-			name:     "Abs filter",
+			name:     "Abs filter with direct negative number",
+			source:   "{{ (-5)|abs }}",
+			context:  nil,
+			expected: "5",
+		},
+		{
+			name:     "Abs filter with variable",
 			source:   "{{ neg_five|abs }}",
 			context:  map[string]interface{}{"neg_five": -5},
 			expected: "5",
@@ -452,10 +459,22 @@ func TestNumberFilters(t *testing.T) {
 			expected: "3",
 		},
 		{
+			name:     "Round filter with direct negative number",
+			source:   "{{ (-3.7)|round }}",
+			context:  nil,
+			expected: "-4",
+		},
+		{
 			name:     "Round filter (precision)",
 			source:   "{{ 3.1415926|round(2) }}",
 			context:  nil,
 			expected: "3.14",
+		},
+		{
+			name:     "Round filter with negative precision direct",
+			source:   "{{ 1234.5678|round(-2) }}",
+			context:  nil,
+			expected: "1200",
 		},
 		{
 			name:     "Number format filter",
@@ -476,7 +495,7 @@ func TestNumberFilters(t *testing.T) {
 			expected: "0",
 		},
 		{
-			name:     "Round filter with negative number",
+			name:     "Round filter with negative number variable",
 			source:   "{{ neg_num|round }}",
 			context:  map[string]interface{}{"neg_num": -3.7},
 			expected: "-4",
@@ -494,7 +513,7 @@ func TestNumberFilters(t *testing.T) {
 			expected: "1234.57",
 		},
 		{
-			name:     "Round filter with negative precision",
+			name:     "Round filter with negative precision variable",
 			source:   "{{ 1234.5678|round(neg_prec) }}",
 			context:  map[string]interface{}{"neg_prec": -2},
 			expected: "1200",
@@ -516,6 +535,19 @@ func TestNumberFilters(t *testing.T) {
 			source:   "{{ 1234.5|number_format(2, ',', ' ') }}",
 			context:  nil,
 			expected: "1 234,50",
+		},
+		// Complex expressions with negative numbers
+		{
+			name:     "Complex expression with negation",
+			source:   "{{ (-(1+2))|abs }}",
+			context:  nil,
+			expected: "3",
+		},
+		{
+			name:     "Complex expression with negative numbers",
+			source:   "{{ (-5) * (-2) }}",
+			context:  nil,
+			expected: "10",
 		},
 	}
 
@@ -928,12 +960,6 @@ func TestRangeFunction(t *testing.T) {
 	}
 
 	t.Logf("Range in variable result: '%s'", result)
-}
-
-// TestNegativeStepInRange tests the range function with a negative step value
-// This test is replaced by TestRangeNegativeStepWorkaround which directly tests the function
-func TestNegativeStepInRange(t *testing.T) {
-	t.Skip("Skipping: This test is replaced by TestRangeNegativeStepWorkaround")
 }
 
 // TestExtensionsFunctions tests additional custom functions

@@ -28,7 +28,6 @@
 - [Debugging and Error Handling](#debugging-and-error-handling)
 - [String Escape Sequences](#string-escape-sequences)
 - [Whitespace Handling](#whitespace-handling)
-- [Range Function with Negative Steps](#range-function-with-negative-steps)
 - [Performance](#performance)
 - [Examples](#examples)
 - [Template Compilation](#template-compilation)
@@ -370,29 +369,6 @@ if err != nil {
     return
 }
 ```
-
-## Range Function with Negative Steps
-
-When using the range function with negative step values, there's a tokenizer limitation. Direct usage of negative literals doesn't work:
-
-```twig
-{# This doesn't work directly #}
-{% for i in range(5, 1, -1) %}
-  {{ i }}  
-{% endfor %}
-```
-
-Instead, use a variable for the negative step value:
-
-```twig
-{# Working version with a variable #}
-{% set step = -1 %}
-{% for i in range(5, 1, step) %}
-  {{ i }}  {# Outputs: 5 4 3 2 #}
-{% endfor %}
-```
-
-This is a current limitation of the tokenizer which treats the minus sign (`-`) and number as separate tokens.
 
 ## String Escape Sequences
 

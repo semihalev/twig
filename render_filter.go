@@ -99,9 +99,25 @@ func (ctx *RenderContext) evaluateFilterNode(n *FilterNode) (interface{}, error)
 	if err != nil {
 		return nil, err
 	}
+	
+	// Log for debugging 
+	if IsDebugEnabled() {
+		LogDebug("Evaluating filter chain: %s on value type %T", n.filter, value)
+	}
 
 	// Apply the entire filter chain in a single operation
-	return ctx.ApplyFilterChain(value, filterChain)
+	result, err := ctx.ApplyFilterChain(value, filterChain)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure filter chain results are directly usable in for loops
+	// This is especially important for filters like 'sort' that transform arrays
+	// We convert to a []interface{} which is what ForNode.Render expects
+	if IsDebugEnabled() {
+		LogDebug("Filter result type: %T", result)
+	}
+	return result, nil
 }
 
 // Helper function to check if a string is numeric

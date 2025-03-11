@@ -263,6 +263,16 @@ func (n *ForNode) Line() int {
 
 // Render renders the for loop node
 func (n *ForNode) Render(w io.Writer, ctx *RenderContext) error {
+	// Add debug info about the sequence node
+	if IsDebugEnabled() {
+		LogDebug("ForNode sequence node type: %T", n.sequence)
+		
+		// Special handling for filter nodes in for loops to aid debugging
+		if filterNode, ok := n.sequence.(*FilterNode); ok {
+			LogDebug("ForNode sequence is a FilterNode with filter: %s", filterNode.filter)
+		}
+	}
+	
 	// Special handling for FunctionNode with name "range" directly in for loop
 	if funcNode, ok := n.sequence.(*FunctionNode); ok && funcNode.name == "range" {
 		// Add debug output to see what's happening
@@ -317,11 +327,102 @@ func (n *ForNode) Render(w io.Writer, ctx *RenderContext) error {
 			fmt.Println("Engine or environment is nil")
 		}
 	}
+	
+	// Special handling for FilterNode to improve rendering in for loops
+	if filterNode, ok := n.sequence.(*FilterNode); ok {
+		if IsDebugEnabled() {
+			LogDebug("ForNode: direct processing of filter node: %s", filterNode.filter)
+		}
+		
+		// Get the base value first
+		baseNode, filterChain, err := ctx.DetectFilterChain(filterNode)
+		if err != nil {
+			return err
+		}
+		
+		// Evaluate the base value
+		baseValue, err := ctx.EvaluateExpression(baseNode)
+		if err != nil {
+			return err
+		}
+		
+		if IsDebugEnabled() {
+			LogDebug("ForNode: base value type: %T, filter chain length: %d", baseValue, len(filterChain))
+		}
+		
+		// Apply each filter in the chain
+		result := baseValue
+		for _, filter := range filterChain {
+			if IsDebugEnabled() {
+				LogDebug("ForNode: applying filter: %s", filter.name)
+			}
+			
+			// Apply the filter
+			result, err = ctx.ApplyFilter(filter.name, result, filter.args...)
+			if err != nil {
+				return err
+			}
+			
+			if IsDebugEnabled() {
+				LogDebug("ForNode: after filter %s, result type: %T", filter.name, result)
+			}
+		}
+		
+		// Use the filtered result directly
+		return n.renderForLoop(w, ctx, result)
+	}
 
 	// Standard evaluation for other types of sequences
 	seq, err := ctx.EvaluateExpression(n.sequence)
 	if err != nil {
 		return err
+	}
+	
+	// WORKAROUND: When a filter is used directly in a for loop sequence like:
+	// {% for item in items|sort %}, the parser currently registers the sequence
+	// as a VariableNode with a name like "items|sort" instead of properly parsing
+	// it as a FilterNode. This workaround handles this parsing deficiency.
+	if varNode, ok := n.sequence.(*VariableNode); ok {
+		// Check if the variable contains a filter indicator (|)
+		if strings.Contains(varNode.name, "|") {
+			parts := strings.SplitN(varNode.name, "|", 2)
+			if len(parts) == 2 {
+				baseVar := parts[0]
+				filterName := parts[1]
+				
+				if IsDebugEnabled() {
+					LogDebug("ForNode: Detected inline filter reference: var=%s, filter=%s", baseVar, filterName)
+				}
+				
+				// Get the base value
+				baseValue, _ := ctx.GetVariable(baseVar)
+				
+				// Apply the filter
+				if baseValue != nil {
+					if IsDebugEnabled() {
+						LogDebug("ForNode: Applying filter %s to %T manually", filterName, baseValue)
+					}
+					
+					// Try to apply the filter
+					if ctx.env != nil {
+						filterFunc, found := ctx.env.filters[filterName]
+						if found {
+							filteredResult, err := filterFunc(baseValue)
+							if err == nil && filteredResult != nil {
+								if IsDebugEnabled() {
+									LogDebug("ForNode: Manual filter application successful")
+								}
+								seq = filteredResult
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	if IsDebugEnabled() {
+		LogDebug("ForNode: sequence after evaluation: %T", seq)
 	}
 
 	return n.renderForLoop(w, ctx, seq)
@@ -362,13 +463,33 @@ func (n *ForNode) renderForLoop(w io.Writer, ctx *RenderContext, seq interface{}
 		},
 	}
 
-	// Determine the length based on the type
+	// Variables to track iteration state
 	length := 0
 	isIterable := true
-
 	switch val.Kind() {
 	case reflect.Slice, reflect.Array:
 		length = val.Len()
+		
+		// Convert typed slices to []interface{} for consistent iteration
+		// This is essential for for-loop compatibility with filter results
+		if val.Type().Elem().Kind() != reflect.Interface {
+			// Debug logging for this conversion operation
+			if IsDebugEnabled() {
+				LogDebug("Converting %s to []interface{} for for-loop compatibility", val.Type())
+			}
+			
+			// Create a new []interface{} and copy all values
+			interfaceSlice := make([]interface{}, length)
+			for i := 0; i < length; i++ {
+				if val.Index(i).CanInterface() {
+					interfaceSlice[i] = val.Index(i).Interface()
+				}
+			}
+			
+			// Replace the original sequence with our new interface slice
+			seq = interfaceSlice
+			val = reflect.ValueOf(seq)
+		}
 	case reflect.Map:
 		length = val.Len()
 	case reflect.String:

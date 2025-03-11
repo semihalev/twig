@@ -73,9 +73,6 @@ func (p *Parser) Parse(source string) (Node, error) {
 	// the whitespace trimming between template elements
 	p.tokens = processWhitespaceControl(p.tokens)
 
-	// We don't need to call preserveHtmlContent() anymore since our tokenizer
-	// already preserves HTML content exactly as it was in the source
-
 	// Parse tokens into nodes
 	nodes, err := p.parseOuterTemplate()
 	if err != nil {
@@ -83,135 +80,6 @@ func (p *Parser) Parse(source string) (Node, error) {
 	}
 
 	return NewRootNode(nodes, 1), nil
-}
-
-// preserveHtmlContent keeps HTML content exactly as it was in the original source
-func (p *Parser) preserveHtmlContent() {
-	// Create a totally new approach - we'll convert HTML segments to verbatim TEXT tokens
-	var newTokens []Token
-
-	// Group tokens by whether they're twig tags or regular text
-	i := 0
-	for i < len(p.tokens) {
-		token := p.tokens[i]
-
-		// Handle Twig template tags - these are the only tokens we care about
-		if token.Type == TOKEN_VAR_START || token.Type == TOKEN_VAR_START_TRIM ||
-			token.Type == TOKEN_BLOCK_START || token.Type == TOKEN_BLOCK_START_TRIM {
-
-			// Found a starting tag, add it as is
-			newTokens = append(newTokens, token)
-			i++
-
-			// Keep all tokens until the matching end tag
-			endFound := false
-
-			// Determine which end tag we're looking for
-			var endType int
-			if token.Type == TOKEN_VAR_START || token.Type == TOKEN_VAR_START_TRIM {
-				endType = TOKEN_VAR_END // Also matches TOKEN_VAR_END_TRIM
-			} else {
-				endType = TOKEN_BLOCK_END // Also matches TOKEN_BLOCK_END_TRIM
-			}
-
-			// Add all tokens inside the tag
-			for i < len(p.tokens) {
-				innerToken := p.tokens[i]
-
-				// Check if we found the end tag
-				if innerToken.Type == endType ||
-					(endType == TOKEN_VAR_END && innerToken.Type == TOKEN_VAR_END_TRIM) ||
-					(endType == TOKEN_BLOCK_END && innerToken.Type == TOKEN_BLOCK_END_TRIM) {
-					// Found the end tag
-					newTokens = append(newTokens, innerToken)
-					i++
-					endFound = true
-					break
-				}
-
-				// Add the token
-				newTokens = append(newTokens, innerToken)
-				i++
-			}
-
-			if !endFound {
-				// Error: unclosed tag - silent failure
-			}
-
-			continue
-		} else if token.Type == TOKEN_COMMENT_START {
-			// Handle comments similarly to tags
-			newTokens = append(newTokens, token)
-			i++
-
-			// Find the end of the comment
-			endFound := false
-
-			for i < len(p.tokens) {
-				innerToken := p.tokens[i]
-
-				if innerToken.Type == TOKEN_COMMENT_END {
-					// Found the end of the comment
-					newTokens = append(newTokens, innerToken)
-					i++
-					endFound = true
-					break
-				}
-
-				// Add the token
-				newTokens = append(newTokens, innerToken)
-				i++
-			}
-
-			if !endFound {
-				// Error: unclosed comment - silent failure
-			}
-
-			continue
-		} else if token.Type == TOKEN_TEXT {
-			// Keep text tokens as is
-			newTokens = append(newTokens, token)
-			i++
-			continue
-		}
-
-		// Any tokens that aren't explicitly template tags - convert to TEXT
-		// These are typically part of HTML content
-		startPos := i
-		_ = token.Line
-		var tokenValue strings.Builder
-		startLine := token.Line
-
-		// Capture original source for this segment
-		if startPos < len(p.tokens) {
-			// First, append the current token
-			tokenValue.WriteString(token.Value)
-			i++
-
-			// See if there are more tokens on this line that aren't template tags
-			for i < len(p.tokens) &&
-				p.tokens[i].Type != TOKEN_VAR_START && p.tokens[i].Type != TOKEN_VAR_START_TRIM &&
-				p.tokens[i].Type != TOKEN_BLOCK_START && p.tokens[i].Type != TOKEN_BLOCK_START_TRIM &&
-				p.tokens[i].Type != TOKEN_VAR_END && p.tokens[i].Type != TOKEN_VAR_END_TRIM &&
-				p.tokens[i].Type != TOKEN_BLOCK_END && p.tokens[i].Type != TOKEN_BLOCK_END_TRIM &&
-				p.tokens[i].Type != TOKEN_COMMENT_START && p.tokens[i].Type != TOKEN_COMMENT_END {
-
-				// Append the token
-				tokenValue.WriteString(p.tokens[i].Value)
-				i++
-			}
-
-			// Add as a TEXT token
-			newTokens = append(newTokens, Token{
-				Type:  TOKEN_TEXT,
-				Value: tokenValue.String(),
-				Line:  startLine,
-			})
-		}
-	}
-
-	// Update the parser's tokens
-	p.tokens = newTokens
 }
 
 // Initialize block handlers for different tag types
@@ -678,9 +546,39 @@ func (p *Parser) parseExpression() (Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	
+	// Check for array access with square brackets
+	for p.tokenIndex < len(p.tokens) &&
+		p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
+		p.tokens[p.tokenIndex].Value == "[" {
+		
+		// Get the line number for error reporting
+		line := p.tokens[p.tokenIndex].Line
+		
+		// Skip the opening bracket
+		p.tokenIndex++
+		
+		// Parse the index expression
+		indexExpr, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		
+		// Expect closing bracket
+		if p.tokenIndex >= len(p.tokens) ||
+			p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
+			p.tokens[p.tokenIndex].Value != "]" {
+			return nil, fmt.Errorf("expected closing bracket after array index at line %d", line)
+		}
+		p.tokenIndex++ // Skip closing bracket
+		
+		// Create a GetItemNode
+		expr = NewGetItemNode(expr, indexExpr, line)
+	}
 
 	// Now check for filter operator (|)
-	if p.tokenIndex < len(p.tokens) &&
+	// Process all filters in a loop to handle consecutive filters properly
+	for p.tokenIndex < len(p.tokens) &&
 		p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 		p.tokens[p.tokenIndex].Value == "|" {
 
@@ -768,9 +666,11 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 
 	token := p.tokens[p.tokenIndex]
 
-	// Handle unary operators like 'not'
-	if token.Type == TOKEN_NAME && token.Value == "not" {
-		// Skip the 'not' token
+	// Handle unary operators like 'not' and unary minus/plus
+	if (token.Type == TOKEN_NAME && token.Value == "not") ||
+		(token.Type == TOKEN_OPERATOR && (token.Value == "-" || token.Value == "+")) {
+		// Skip the operator token
+		operator := token.Value
 		p.tokenIndex++
 
 		// Get the line number for the unary node
@@ -782,8 +682,8 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 			return nil, err
 		}
 
-		// Create a unary NOT node
-		return NewUnaryNode("not", operand, line), nil
+		// Create a unary node
+		return NewUnaryNode(operator, operand, line), nil
 	}
 
 	switch token.Type {
@@ -898,10 +798,48 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 		if token.Value == "[" {
 			return p.parseArrayExpression()
 		}
+		
+		// Handle hash/map literals {'key': value}
+		if token.Value == "{" {
+			return p.parseMapExpression()
+		}
 
 		// Handle parenthesized expressions
 		if token.Value == "(" {
 			p.tokenIndex++ // Skip "("
+			
+			// Check for unary operator immediately after opening parenthesis
+			if p.tokenIndex < len(p.tokens) && 
+			   p.tokens[p.tokenIndex].Type == TOKEN_OPERATOR && 
+			   (p.tokens[p.tokenIndex].Value == "-" || p.tokens[p.tokenIndex].Value == "+") {
+				
+				// Handle unary operation inside parentheses
+				unaryToken := p.tokens[p.tokenIndex]
+				operator := unaryToken.Value
+				line := unaryToken.Line
+				p.tokenIndex++ // Skip the operator
+				
+				// Parse the operand
+				operand, err := p.parseExpression()
+				if err != nil {
+					return nil, err
+				}
+				
+				// Create a unary node
+				expr := NewUnaryNode(operator, operand, line)
+				
+				// Expect closing parenthesis
+				if p.tokenIndex >= len(p.tokens) ||
+					p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
+					p.tokens[p.tokenIndex].Value != ")" {
+					return nil, fmt.Errorf("expected closing parenthesis at line %d", token.Line)
+				}
+				p.tokenIndex++ // Skip ")"
+				
+				return expr, nil
+			}
+			
+			// Regular parenthesized expression
 			expr, err := p.parseExpression()
 			if err != nil {
 				return nil, err
@@ -974,6 +912,77 @@ func (p *Parser) parseArrayExpression() (Node, error) {
 	return &ArrayNode{
 		ExpressionNode: ExpressionNode{
 			exprType: ExprArray,
+			line:     line,
+		},
+		items: items,
+	}, nil
+}
+
+// parseMapExpression parses a hash/map literal expression, like {'key': value}
+func (p *Parser) parseMapExpression() (Node, error) {
+	// Save the line number for error reporting
+	line := p.tokens[p.tokenIndex].Line
+
+	// Skip the opening brace
+	p.tokenIndex++
+
+	// Parse the map key-value pairs
+	items := make(map[Node]Node)
+
+	// Check if there are any items
+	if p.tokenIndex < len(p.tokens) &&
+		!(p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
+			p.tokens[p.tokenIndex].Value == "}") {
+
+		for {
+			// Parse key expression
+			keyExpr, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+
+			// Expect colon separator
+			if p.tokenIndex >= len(p.tokens) ||
+				p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
+				p.tokens[p.tokenIndex].Value != ":" {
+				return nil, fmt.Errorf("expected ':' after map key at line %d", line)
+			}
+			p.tokenIndex++ // Skip colon
+
+			// Parse value expression
+			valueExpr, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+
+			// Add key-value pair to map
+			items[keyExpr] = valueExpr
+
+			// Check for comma separator between items
+			if p.tokenIndex < len(p.tokens) &&
+				p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
+				p.tokens[p.tokenIndex].Value == "," {
+				p.tokenIndex++ // Skip comma
+				continue
+			}
+
+			// No comma, so must be end of map
+			break
+		}
+	}
+
+	// Expect closing brace
+	if p.tokenIndex >= len(p.tokens) ||
+		p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
+		p.tokens[p.tokenIndex].Value != "}" {
+		return nil, fmt.Errorf("expected closing brace after map items at line %d", line)
+	}
+	p.tokenIndex++ // Skip closing brace
+
+	// Create hash node
+	return &HashNode{
+		ExpressionNode: ExpressionNode{
+			exprType: ExprHash,
 			line:     line,
 		},
 		items: items,
@@ -1492,6 +1501,11 @@ func (p *Parser) parseFor(parser *Parser) (Node, error) {
 	sequence, err := parser.parseExpression()
 	if err != nil {
 		return nil, err
+	}
+	
+	// Check for filter operator (|) - needed for cases where filter detection might be missed
+	if IsDebugEnabled() {
+		LogDebug("For loop sequence expression type: %T", sequence)
 	}
 
 	// Expect the block end token (either regular or trim variant)

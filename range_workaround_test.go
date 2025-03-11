@@ -42,8 +42,41 @@ func TestRangeNegativeStepWorkaround(t *testing.T) {
 		}
 	}
 
+	// Test the function with our parser improvements
+	engine := New()
+
+	// Test with direct negative step in template (should now work with parser improvements)
+	err = engine.RegisterString("range_direct_neg", `{% for i in range(5, 1, -1) %}{{ i }}{% endfor %}`)
+	if err != nil {
+		t.Fatalf("Error registering template: %v", err)
+	}
+
+	templateResult, err := engine.Render("range_direct_neg", nil)
+	if err != nil {
+		t.Fatalf("Error rendering template: %v", err)
+	}
+
+	expectedString := "54321"
+	if templateResult != expectedString {
+		t.Fatalf("Expected: %q, Got: %q", expectedString, templateResult)
+	}
+
+	// Test with direct negative step and more complex expressions
+	err = engine.RegisterString("range_complex_neg", `{% for i in range(10, 0, (-2)) %}{{ i }}{% endfor %}`)
+	if err != nil {
+		t.Fatalf("Error registering template: %v", err)
+	}
+
+	templateResult, err = engine.Render("range_complex_neg", nil)
+	if err != nil {
+		t.Fatalf("Error rendering template: %v", err)
+	}
+
+	expectedString = "1086420"
+	if templateResult != expectedString {
+		t.Fatalf("Expected: %q, Got: %q", expectedString, templateResult)
+	}
+
 	t.Logf("The range function itself correctly handles negative steps")
-	t.Logf("While direct template syntax fails due to tokenizer limitations")
-	t.Logf("The solution is to use a variable for the negative step:")
-	t.Logf("{%% set step = -1 %%}{%% for i in range(5, 1, step) %%}{{ i }}{%% endfor %%}")
+	t.Logf("Our parser improvements now allow direct negative literals in templates")
 }

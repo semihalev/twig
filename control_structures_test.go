@@ -268,9 +268,58 @@ func TestNestedLoops(t *testing.T) {
 }
 
 // TestNegativeRangeStep tests the range function with negative step values
-// This test is replaced by TestRangeNegativeStepWorkaround which directly tests the function
 func TestNegativeRangeStep(t *testing.T) {
-	t.Skip("Skipping: This test is replaced by TestRangeNegativeStepWorkaround")
+	engine := New()
+
+	tests := []struct {
+		name     string
+		source   string
+		context  map[string]interface{}
+		expected string
+	}{
+		{
+			name:     "Range with direct negative step",
+			source:   "{% for i in range(5, 1, -1) %}{{ i }}{% endfor %}",
+			context:  nil,
+			expected: "54321",
+		},
+		{
+			name:     "Range with parenthesized negative step",
+			source:   "{% for i in range(10, 0, (-2)) %}{{ i }}{% endfor %}",
+			context:  nil,
+			expected: "1086420",
+		},
+		{
+			name:     "Range with complex negative step expression",
+			source:   "{% for i in range(10, 2, (0-2)) %}{{ i }}{% endfor %}",
+			context:  nil,
+			expected: "108642",
+		},
+		{
+			name:     "Range with variable negative step",
+			source:   "{% for i in range(5, 1, neg_step) %}{{ i }}{% endfor %}",
+			context:  map[string]interface{}{"neg_step": -1},
+			expected: "54321",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := engine.RegisterString("test", tt.source)
+			if err != nil {
+				t.Fatalf("Error registering template: %v", err)
+			}
+
+			result, err := engine.Render("test", tt.context)
+			if err != nil {
+				t.Fatalf("Error rendering template: %v", err)
+			}
+
+			if result != tt.expected {
+				t.Errorf("Expected: %q, Got: %q", tt.expected, result)
+			}
+		})
+	}
 }
 
 // TestRangeFunctionInForLoop tests the range function directly in a for loop
@@ -297,6 +346,31 @@ func TestRangeFunctionInForLoop(t *testing.T) {
 			name:     "Range function with loop variable",
 			source:   "{% for i in range(1, 3) %}{{ loop.index }}:{{ i }};{% endfor %}",
 			expected: "1:1;2:2;3:3;",
+		},
+		{
+			name:     "Range function with direct negative start",
+			source:   "{% for i in range(-3, 0) %}{{ i }}{% endfor %}",
+			expected: "-3-2-10",
+		},
+		{
+			name:     "Range function with parenthesized negative start",
+			source:   "{% for i in range((-5), 0) %}{{ i }}{% endfor %}",
+			expected: "-5-4-3-2-10",
+		},
+		{
+			name:     "Range with negative end value",
+			source:   "{% for i in range(0, -3, -1) %}{{ i }}{% endfor %}",
+			expected: "0-1-2-3",
+		},
+		{
+			name:     "Range with complex negative literals",
+			source:   "{% for i in range((-10), (-5)) %}{{ i }}{% endfor %}",
+			expected: "-10-9-8-7-6-5",
+		},
+		{
+			name:     "Range with arithmetic expressions for bounds",
+			source:   "{% for i in range(0-5, 0) %}{{ i }}{% endfor %}",
+			expected: "-5-4-3-2-10",
 		},
 	}
 

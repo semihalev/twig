@@ -203,6 +203,18 @@ func NewGetAttrNode(node, attribute Node, line int) *GetAttrNode {
 	}
 }
 
+// NewGetItemNode creates a new item access node
+func NewGetItemNode(node, item Node, line int) *GetItemNode {
+	return &GetItemNode{
+		ExpressionNode: ExpressionNode{
+			exprType: ExprGetItem,
+			line:     line,
+		},
+		node: node,
+		item: item,
+	}
+}
+
 // Render implementation for VariableNode
 func (n *VariableNode) Render(w io.Writer, ctx *RenderContext) error {
 	value, err := ctx.GetVariable(n.name)
@@ -233,6 +245,28 @@ func (n *GetAttrNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	value, err := ctx.getAttribute(obj, attrStr)
+	if err != nil {
+		return err
+	}
+
+	str := ctx.ToString(value)
+	_, err = w.Write([]byte(str))
+	return err
+}
+
+// Render implementation for GetItemNode
+func (n *GetItemNode) Render(w io.Writer, ctx *RenderContext) error {
+	container, err := ctx.EvaluateExpression(n.node)
+	if err != nil {
+		return err
+	}
+
+	index, err := ctx.EvaluateExpression(n.item)
+	if err != nil {
+		return err
+	}
+
+	value, err := ctx.getItem(container, index)
 	if err != nil {
 		return err
 	}
@@ -314,6 +348,18 @@ func (n *ArrayNode) Render(w io.Writer, ctx *RenderContext) error {
 	return err
 }
 
+// Render implementation for HashNode
+func (n *HashNode) Render(w io.Writer, ctx *RenderContext) error {
+	result, err := ctx.EvaluateExpression(n)
+	if err != nil {
+		return err
+	}
+
+	str := ctx.ToString(result)
+	_, err = w.Write([]byte(str))
+	return err
+}
+
 // Render implementation for FunctionNode
 func (n *FunctionNode) Render(w io.Writer, ctx *RenderContext) error {
 	result, err := ctx.EvaluateExpression(n)
@@ -382,6 +428,17 @@ func NewArrayNode(items []Node, line int) *ArrayNode {
 	return &ArrayNode{
 		ExpressionNode: ExpressionNode{
 			exprType: ExprArray,
+			line:     line,
+		},
+		items: items,
+	}
+}
+
+// NewHashNode creates a new hash node
+func NewHashNode(items map[Node]Node, line int) *HashNode {
+	return &HashNode{
+		ExpressionNode: ExpressionNode{
+			exprType: ExprHash,
 			line:     line,
 		},
 		items: items,
