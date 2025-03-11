@@ -136,6 +136,40 @@ This simplified approach offers several advantages:
    - Added proper handling in the tokenizer and parser
    - Updated the parseExpression method to handle multiple binary operators in sequence
 
+3. **Short-Circuit Evaluation**: Fixed the logical operators to implement proper short-circuit evaluation.
+   - Modified `BinaryNode` evaluation to only evaluate the right side when needed
+   - Fixed issue with expressions like `{% if foo is defined and foo > 5 %}` that failed when variables were undefined
+   - Implementation in `EvaluateExpression` method:
+   ```go
+   case *BinaryNode:
+       left, err := ctx.EvaluateExpression(n.left)
+       if err != nil {
+           return nil, err
+       }
+
+       // Implement short-circuit evaluation for logical operators
+       if n.operator == "and" || n.operator == "&&" {
+           // For "and" operator, if left side is false, return false without evaluating right side
+           if !ctx.toBool(left) {
+               return false, nil
+           }
+       } else if n.operator == "or" || n.operator == "||" {
+           // For "or" operator, if left side is true, return true without evaluating right side
+           if ctx.toBool(left) {
+               return true, nil
+           }
+       }
+
+       // For other operators or if short-circuit condition not met, evaluate right side
+       right, err := ctx.EvaluateExpression(n.right)
+       if err != nil {
+           return nil, err
+       }
+
+       return ctx.evaluateBinaryOp(n.operator, left, right)
+   }
+   ```
+
 # Function Support in For Loops
 
 ## Problem Description

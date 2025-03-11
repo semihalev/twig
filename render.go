@@ -530,6 +530,20 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 			return nil, err
 		}
 
+		// Implement short-circuit evaluation for logical operators
+		if n.operator == "and" || n.operator == "&&" {
+			// For "and" operator, if left side is false, return false without evaluating right side
+			if !ctx.toBool(left) {
+				return false, nil
+			}
+		} else if n.operator == "or" || n.operator == "||" {
+			// For "or" operator, if left side is true, return true without evaluating right side
+			if ctx.toBool(left) {
+				return true, nil
+			}
+		}
+
+		// For other operators or if short-circuit condition not met, evaluate right side
 		right, err := ctx.EvaluateExpression(n.right)
 		if err != nil {
 			return nil, err

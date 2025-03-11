@@ -28,6 +28,12 @@
 3. Sort behavior:
    - The sort filter handles mixed types with natural sort, not lexicographic sort
 
+4. Short-Circuit Evaluation Issues:
+   - The `and` operator lacks proper short-circuit evaluation when checking for existence combined with other operations
+   - Expressions like `{% if foo is defined and foo > 5 %}` fail with "unsupported binary operator" errors when foo is undefined
+   - The issue is in `evaluateBinaryOp` in render.go where both sides of `and` are evaluated before applying the operator
+   - Need to implement proper short-circuit evaluation so that right-side expressions aren't evaluated when left side is false
+
 ### Fixed Issues
 
 1. 'not defined' syntax support:
