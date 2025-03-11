@@ -112,6 +112,8 @@
    - Added comprehensive tests for all operators and precedence rules
    - Fixed tokenizer to properly identify operators in all contexts
    - Improved expression tree building to respect operator precedence
+   - Modified tests for number filters to use variables for negative values instead of direct negative literals
+   - Added notes about the limitations of direct negative number literals in expressions
 
 8. **Function Support in For Loops**
    - Fixed direct usage of range function in for loops

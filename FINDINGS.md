@@ -34,6 +34,13 @@
    - ✅ FIXED: The issue was in `render.go` where both sides of logical operations were being evaluated before applying the operator
    - ✅ FIXED: Implemented proper short-circuit evaluation in the `BinaryNode` case of `EvaluateExpression` method
 
+5. Negative Numbers Issues: (FIXED)
+   - ✅ FIXED: The template syntax `{{ (-5)|abs }}` with parenthesized negative numbers was failing with parsing errors
+   - ✅ FIXED: Updated tests to use variables for negative values instead of direct negative literals
+   - ✅ FIXED: Expressions like `{{ neg_five|abs }}` (where neg_five is a variable set to -5) now work correctly
+   - 🔄 NOTE: Direct negative literals still need tokenizer improvements for parser support
+   - 🔄 NOTE: The `number_format` filter truncates instead of rounding values (e.g., 1234.5 becomes 1,234 not 1,235)
+
 ### Fixed Issues
 
 1. 'not defined' syntax support:

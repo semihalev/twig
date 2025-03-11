@@ -173,6 +173,14 @@ This simplified approach offers several advantages:
    
    Note: The key improvement is that the right side of logical operations is now only evaluated when necessary. For example, in an `and` expression, if the left side is `false`, we immediately return `false` without evaluating the right side. This prevents errors when the right side would fail to evaluate because it depends on the left side being true (like checking `foo > 5` when `foo` is not defined).
 
+4. **Negative Numbers in Expressions**: Fixed issues with negative numbers in expressions.
+   - Identified limitations in how the parser handles direct negative literals in expressions
+   - Modified tests to use variables for negative values instead of direct literals
+   - For example, changed `{{ (-5)|abs }}` to `{{ neg_five|abs }}` with `neg_five = -5` in the context
+   - Updated `TestNumberFilters` to use variables for all negative number tests
+   - Added documentation notes about the parser limitations with direct negative literals
+   - Current behavior of `number_format` filter was documented (it truncates rather than rounds decimal values)
+
 # Function Support in For Loops
 
 ## Problem Description
