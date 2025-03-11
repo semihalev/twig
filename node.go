@@ -65,12 +65,13 @@ func NewExtendsNode(parent Node, line int) *ExtendsNode {
 }
 
 // NewIncludeNode creates a new include node
-func NewIncludeNode(template Node, variables map[string]Node, ignoreMissing, only bool, line int) *IncludeNode {
+func NewIncludeNode(template Node, variables map[string]Node, ignoreMissing, only, sandboxed bool, line int) *IncludeNode {
 	return &IncludeNode{
 		template:      template,
 		variables:     variables,
 		ignoreMissing: ignoreMissing,
 		only:          only,
+		sandboxed:     sandboxed,
 		line:          line,
 	}
 }
@@ -147,6 +148,7 @@ const (
 	NodeDo
 	NodeModuleMethod
 	NodeApply
+	NodeSandbox
 )
 
 // RootNode represents the root of a template
@@ -766,6 +768,7 @@ type IncludeNode struct {
 	variables     map[string]Node
 	ignoreMissing bool
 	only          bool
+	sandboxed     bool
 	line          int
 }
 
@@ -832,12 +835,22 @@ func (n *IncludeNode) Render(w io.Writer, ctx *RenderContext) error {
 		return template.nodes.Render(w, ctx)
 	}
 
-	// Need a new context for 'only' mode or with variables
+	// Need a new context for 'only' mode, sandboxed mode, or with variables
 	includeCtx := ctx
-	if n.only {
+	if n.only || n.sandboxed {
 		// Create minimal context with just what we need
 		includeCtx = NewRenderContext(ctx.env, make(map[string]interface{}, len(n.variables)), ctx.engine)
 		defer includeCtx.Release()
+		
+		// If sandboxed, enable sandbox mode
+		if n.sandboxed {
+			includeCtx.sandboxed = true
+			
+			// Check if a security policy is defined
+			if ctx.env.securityPolicy == nil {
+				return fmt.Errorf("cannot use sandboxed include without a security policy")
+			}
+		}
 	}
 
 	// Pre-evaluate all variables before setting them

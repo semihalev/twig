@@ -27,6 +27,7 @@ type RenderContext struct {
 	extending    bool       // Whether this template extends another
 	currentBlock *BlockNode // Current block being rendered (for parent() function)
 	inParentCall bool       // Flag to indicate if we're currently rendering a parent() call
+	sandboxed    bool       // Flag indicating if this context is sandboxed
 }
 
 // renderContextPool is a sync.Pool for RenderContext objects
@@ -226,6 +227,39 @@ func (ctx *RenderContext) GetEngine() *Engine {
 // SetParent sets the parent context
 func (ctx *RenderContext) SetParent(parent *RenderContext) {
 	ctx.parent = parent
+}
+
+// Clone creates a new RenderContext as a child of this one
+func (ctx *RenderContext) Clone() *RenderContext {
+	newCtx := NewRenderContext(ctx.env, make(map[string]interface{}), ctx.engine)
+	
+	// Inherit parent context
+	newCtx.parent = ctx
+	
+	// Inherit sandbox state
+	newCtx.sandboxed = ctx.sandboxed
+
+	// Copy all blocks 
+	for name, nodes := range ctx.blocks {
+		newCtx.blocks[name] = nodes
+	}
+
+	// Copy macros
+	for name, node := range ctx.macros {
+		newCtx.macros[name] = node
+	}
+
+	return newCtx
+}
+
+// EnableSandbox enables sandbox mode on this context
+func (ctx *RenderContext) EnableSandbox() {
+	ctx.sandboxed = true
+}
+
+// IsSandboxed returns whether this context is sandboxed
+func (ctx *RenderContext) IsSandboxed() bool {
+	return ctx.sandboxed
 }
 
 // GetMacro gets a macro from the context
@@ -499,6 +533,20 @@ func (ctx *RenderContext) callMinFunction(args []interface{}) (interface{}, erro
 func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 	if node == nil {
 		return nil, nil
+	}
+
+	// Handle sandbox security policy checks
+	if ctx.sandboxed && ctx.env.securityPolicy != nil {
+		switch n := node.(type) {
+		case *FunctionNode:
+			if !ctx.env.securityPolicy.IsFunctionAllowed(n.name) {
+				return nil, NewFunctionViolation(n.name)
+			}
+		case *FilterNode:
+			if !ctx.env.securityPolicy.IsFilterAllowed(n.filter) {
+				return nil, NewFilterViolation(n.filter)
+			}
+		}
 	}
 
 	switch n := node.(type) {

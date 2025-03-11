@@ -19,6 +19,7 @@ func (p *Parser) parseInclude(parser *Parser) (Node, error) {
 	var variables map[string]Node
 	var ignoreMissing bool
 	var onlyContext bool
+	var sandboxed bool
 
 	// Look for 'with', 'ignore missing', or 'only'
 	for parser.tokenIndex < len(parser.tokens) &&
@@ -147,6 +148,9 @@ func (p *Parser) parseInclude(parser *Parser) (Node, error) {
 
 		case "only":
 			onlyContext = true
+			
+		case "sandboxed":
+			sandboxed = true
 
 		default:
 			return nil, fmt.Errorf("unexpected keyword '%s' in include at line %d", keyword, includeLine)
@@ -170,6 +174,7 @@ func (p *Parser) parseInclude(parser *Parser) (Node, error) {
 		variables:     variables,
 		ignoreMissing: ignoreMissing,
 		only:          onlyContext,
+		sandboxed:     sandboxed,
 		line:          includeLine,
 	}
 

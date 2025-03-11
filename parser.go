@@ -103,6 +103,7 @@ func (p *Parser) initBlockHandlers() {
 		"spaceless": p.parseSpaceless,
 		"verbatim":  p.parseVerbatim,
 		"apply":     p.parseApply,
+		"sandbox":   p.parseSandbox,
 
 		// Special closing tags - they will be handled in their corresponding open tag parsers
 		"endif":        p.parseEndTag,
@@ -111,6 +112,7 @@ func (p *Parser) initBlockHandlers() {
 		"endblock":     p.parseEndTag,
 		"endspaceless": p.parseEndTag,
 		"endapply":     p.parseEndTag,
+		"endsandbox":   p.parseEndTag,
 		"else":         p.parseEndTag,
 		"elseif":       p.parseEndTag,
 		"endverbatim":  p.parseEndTag,

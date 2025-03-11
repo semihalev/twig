@@ -38,16 +38,17 @@ type Template struct {
 
 // Environment holds configuration and context for template rendering
 type Environment struct {
-	globals    map[string]interface{}
-	filters    map[string]FilterFunc
-	functions  map[string]FunctionFunc
-	tests      map[string]TestFunc
-	operators  map[string]OperatorFunc
-	extensions []Extension
-	cache      bool
-	autoescape bool
-	debug      bool
-	sandbox    bool
+	globals         map[string]interface{}
+	filters         map[string]FilterFunc
+	functions       map[string]FunctionFunc
+	tests           map[string]TestFunc
+	operators       map[string]OperatorFunc
+	extensions      []Extension
+	cache           bool
+	autoescape      bool
+	debug           bool
+	sandbox         bool
+	securityPolicy  SecurityPolicy  // Security policy for sandbox mode
 }
 
 // New creates a new Twig engine instance
@@ -88,6 +89,17 @@ func (e *Engine) SetAutoReload(autoReload bool) {
 // SetStrictVars sets whether strict variable access is enabled
 func (e *Engine) SetStrictVars(strictVars bool) {
 	e.strictVars = strictVars
+}
+
+// EnableSandbox enables sandbox mode with the given security policy
+func (e *Engine) EnableSandbox(policy SecurityPolicy) {
+	e.environment.sandbox = true
+	e.environment.securityPolicy = policy
+}
+
+// DisableSandbox disables sandbox mode
+func (e *Engine) DisableSandbox() {
+	e.environment.sandbox = false
 }
 
 // SetDebug enables or disables debug mode
