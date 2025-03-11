@@ -229,7 +229,7 @@ widgets.twig - UI widgets</pre>
 	}
 
 	// Render each template
-	fmt.Println("===== ADVANCED MACRO EXAMPLES =====\n")
+	fmt.Println("===== ADVANCED MACRO EXAMPLES =====")
 
 	for _, name := range []string{"self_ref.twig", "scope.twig", "context.twig", "use_library.twig", "from_import.twig", "optimization.twig"} {
 		fmt.Printf("\n----- %s -----\n\n", name)
@@ -240,6 +240,6 @@ widgets.twig - UI widgets</pre>
 			continue
 		}
 
-		fmt.Println("\n")
+		fmt.Println()
 	}
 }

@@ -1,4 +1,6 @@
 test_temp/
+twig.wiki/
+
 .DS_Store
 coverage.html
 coverage.out
