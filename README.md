@@ -128,6 +128,9 @@ func main() {
 - Includes: `{% include %}`
 - Macros: `{% macro name(args) %}...{% endmacro %}`
 - Imports: `{% import "template.twig" as alias %}`
+- Selective imports: `{% from "template.twig" import macro1, macro2 as alias %}`
+- Apply filters to blocks: `{% apply filter %}...{% endapply %}`
+- Verbatim content: `{% verbatim %}...{% endverbatim %}`
 - Comments: `{# comment #}`
 - Array literals: `[1, 2, 3]`
 - Conditional expressions: `condition ? true_expr : false_expr`
@@ -170,6 +173,7 @@ This implementation supports many standard Twig filters:
 - `round`: Rounds a number
 - `striptags`: Strips HTML tags from a string
 - `nl2br`: Replaces newlines with HTML line breaks
+- `spaceless`: Removes whitespace between HTML tags
 
 ### Filter Usage Examples
 
@@ -582,6 +586,64 @@ This is particularly useful in JavaScript blocks or when you need to include lit
 ## Whitespace Handling
 
 Twig templates can have significant whitespace that affects the rendered output. This implementation supports the following mechanism for controlling whitespace:
+
+### Apply Tag
+
+The `apply` tag allows you to apply a filter to an entire block of template content:
+
+```twig
+{% apply upper %}
+    This text will be converted to uppercase.
+    {{ variable }} will also be uppercase.
+{% endapply %}
+```
+
+This is particularly useful for:
+- Applying transformations to both static and dynamic content
+- Handling complex HTML with the spaceless filter
+- Creating consistent text formatting across multiple lines
+- Processing content with custom filters
+
+Example usages:
+
+```twig
+{# Remove whitespace between HTML tags #}
+{% apply spaceless %}
+    <div>
+        <strong>Hello</strong>
+    </div>
+{% endapply %}
+
+{# Result: <div><strong>Hello</strong></div> #}
+
+{# Convert content to uppercase #}
+{% apply upper %}
+    Welcome, {{ user.name }}!
+{% endapply %}
+
+{# Replace content #}
+{% apply replace('e', 'a') %}
+    Hello there
+{% endapply %}
+{# Result: Hallo thara #}
+```
+
+### Verbatim Tag
+
+The `verbatim` tag allows you to output Twig syntax without it being processed:
+
+```twig
+{% verbatim %}
+    This {{ will not be processed }} as a variable.
+    {% if statements won't be executed %}
+{% endverbatim %}
+```
+
+This is useful when:
+- Displaying Twig syntax as part of documentation
+- Including template examples in your output
+- Working with JavaScript frameworks that use similar syntax (Vue.js, Angular, etc.)
+- Creating code examples that include Twig syntax
 
 ### Whitespace Control
 
