@@ -143,6 +143,7 @@ const (
 	NodeElement
 	NodeFunction
 	NodeSpaceless
+	NodeDo
 	NodeModuleMethod
 )
 
@@ -850,6 +851,35 @@ func (n *SetNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Set the variable in the context
 	ctx.SetVariable(n.name, value)
 	return nil
+}
+
+// DoNode represents a do tag which evaluates an expression without printing the result
+type DoNode struct {
+	expression Node
+	line       int
+}
+
+// NewDoNode creates a new DoNode
+func NewDoNode(expression Node, line int) *DoNode {
+	return &DoNode{
+		expression: expression,
+		line:       line,
+	}
+}
+
+func (n *DoNode) Type() NodeType {
+	return NodeDo
+}
+
+func (n *DoNode) Line() int {
+	return n.line
+}
+
+// Render evaluates the expression but doesn't write anything
+func (n *DoNode) Render(w io.Writer, ctx *RenderContext) error {
+	// Evaluate the expression but ignore the result
+	_, err := ctx.EvaluateExpression(n.expression)
+	return err
 }
 
 // CommentNode represents a comment

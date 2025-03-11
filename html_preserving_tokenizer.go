@@ -250,6 +250,31 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 								tokens = append(tokens, createToken(TOKEN_NAME, forExpr, line))
 							}
 						}
+					} else if blockName == "do" {
+						// Special handling for do tag with assignments and expressions
+						if len(parts) > 1 {
+							doExpr := strings.TrimSpace(parts[1])
+							
+							// Check if it's an assignment (contains =)
+							assignPos := strings.Index(doExpr, "=")
+							if assignPos > 0 && !strings.Contains(doExpr[:assignPos], "==") {
+								// It's an assignment
+								varName := strings.TrimSpace(doExpr[:assignPos])
+								valueExpr := strings.TrimSpace(doExpr[assignPos+1:])
+								
+								// Add the variable name
+								tokens = append(tokens, createToken(TOKEN_NAME, varName, line))
+								
+								// Add the equals sign
+								tokens = append(tokens, createToken(TOKEN_OPERATOR, "=", line))
+								
+								// Tokenize the expression on the right side
+								p.tokenizeExpression(valueExpr, &tokens, line)
+							} else {
+								// It's just an expression, tokenize it
+								p.tokenizeExpression(doExpr, &tokens, line)
+							}
+						}
 					} else if blockName == "include" {
 						// Special handling for include tag with quoted template names
 						if len(parts) > 1 {
