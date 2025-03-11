@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -672,10 +673,31 @@ func (n *ExtendsNode) Render(w io.Writer, ctx *RenderContext) error {
 		return fmt.Errorf("no template engine available to load parent template: %s", templateName)
 	}
 
-	// Load the parent template
-	parentTemplate, err := ctx.engine.Load(templateName)
+	// Handle relative paths for templates
+	resolvedName := templateName
+	if strings.HasPrefix(templateName, "./") || strings.HasPrefix(templateName, "../") {
+		// Get the directory of the current template
+		currentTemplate := ctx.engine.currentTemplate
+		if currentTemplate != "" {
+			// Extract the directory part of the current template
+			currentDir := filepath.Dir(currentTemplate)
+			// Join the directory with the relative path
+			resolvedName = filepath.Join(currentDir, templateName)
+		}
+	}
+
+	// Load the parent template with resolved path
+	parentTemplate, err := ctx.engine.Load(resolvedName)
 	if err != nil {
-		return err
+		// If template not found with resolved path, try original name
+		if resolvedName != templateName {
+			parentTemplate, err = ctx.engine.Load(templateName)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 
 	// Blocks from child template are registered to the parent context
@@ -729,13 +751,37 @@ func (n *IncludeNode) Render(w io.Writer, ctx *RenderContext) error {
 		return fmt.Errorf("no template engine available to load included template: %s", templateName)
 	}
 
-	// Load the template
-	template, err := ctx.engine.Load(templateName)
-	if err != nil {
-		if n.ignoreMissing {
-			return nil
+	// Handle relative paths for templates
+	resolvedName := templateName
+	if strings.HasPrefix(templateName, "./") || strings.HasPrefix(templateName, "../") {
+		// Get the directory of the current template
+		currentTemplate := ctx.engine.currentTemplate
+		if currentTemplate != "" {
+			// Extract the directory part of the current template
+			currentDir := filepath.Dir(currentTemplate)
+			// Join the directory with the relative path
+			resolvedName = filepath.Join(currentDir, templateName)
 		}
-		return err
+	}
+
+	// Load the template with resolved path
+	template, err := ctx.engine.Load(resolvedName)
+	if err != nil {
+		// If template not found with resolved path, try original name
+		if resolvedName != templateName {
+			template, err = ctx.engine.Load(templateName)
+			if err != nil {
+				if n.ignoreMissing {
+					return nil
+				}
+				return err
+			}
+		} else {
+			if n.ignoreMissing {
+				return nil
+			}
+			return err
+		}
 	}
 
 	// Create optimized context handling for includes
@@ -1067,10 +1113,31 @@ func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
 		return fmt.Errorf("no template engine available to load imported template: %s", templateName)
 	}
 
-	// Load the template
-	template, err := ctx.engine.Load(templateName)
+	// Handle relative paths for templates
+	resolvedName := templateName
+	if strings.HasPrefix(templateName, "./") || strings.HasPrefix(templateName, "../") {
+		// Get the directory of the current template
+		currentTemplate := ctx.engine.currentTemplate
+		if currentTemplate != "" {
+			// Extract the directory part of the current template
+			currentDir := filepath.Dir(currentTemplate)
+			// Join the directory with the relative path
+			resolvedName = filepath.Join(currentDir, templateName)
+		}
+	}
+
+	// Load the template with resolved path
+	template, err := ctx.engine.Load(resolvedName)
 	if err != nil {
-		return err
+		// If template not found with resolved path, try original name
+		if resolvedName != templateName {
+			template, err = ctx.engine.Load(templateName)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 
 	// Create a new context for the imported template
@@ -1130,10 +1197,31 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 		return fmt.Errorf("no template engine available to load imported template: %s", templateName)
 	}
 
-	// Load the template
-	template, err := ctx.engine.Load(templateName)
+	// Handle relative paths for templates
+	resolvedName := templateName
+	if strings.HasPrefix(templateName, "./") || strings.HasPrefix(templateName, "../") {
+		// Get the directory of the current template
+		currentTemplate := ctx.engine.currentTemplate
+		if currentTemplate != "" {
+			// Extract the directory part of the current template
+			currentDir := filepath.Dir(currentTemplate)
+			// Join the directory with the relative path
+			resolvedName = filepath.Join(currentDir, templateName)
+		}
+	}
+
+	// Load the template with resolved path
+	template, err := ctx.engine.Load(resolvedName)
 	if err != nil {
-		return err
+		// If template not found with resolved path, try original name
+		if resolvedName != templateName {
+			template, err = ctx.engine.Load(templateName)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 
 	// Create a new context for the imported template
