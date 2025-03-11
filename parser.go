@@ -83,7 +83,7 @@ func (p *Parser) Parse(source string) (Node, error) {
 
 	// Clean up token slice after successful parsing
 	ReleaseTokenSlice(p.tokens)
-	
+
 	return NewRootNode(nodes, 1), nil
 }
 

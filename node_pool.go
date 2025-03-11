@@ -258,12 +258,12 @@ func GetTokenSlice(capacityHint int) []Token {
 		slice := TokenSlicePool.Get().(*[]Token)
 		return (*slice)[:0]
 	}
-	
+
 	// For large token slices, allocate directly
 	if capacityHint > 1000 {
 		return make([]Token, 0, capacityHint)
 	}
-	
+
 	// Get from pool and ensure it has enough capacity
 	slice := TokenSlicePool.Get().(*[]Token)
 	if cap(*slice) < capacityHint {
@@ -281,7 +281,7 @@ func ReleaseTokenSlice(slice []Token) {
 	if cap(slice) > 1000 || cap(slice) < 32 {
 		return // Don't pool very large or very small slices
 	}
-	
+
 	// Clear the slice to help GC
 	slicePtr := &slice
 	*slicePtr = (*slicePtr)[:0]

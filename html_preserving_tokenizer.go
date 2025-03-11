@@ -14,13 +14,13 @@ func createToken(tokenType int, value string, line int) Token {
 	token.Type = tokenType
 	token.Value = value
 	token.Line = line
-	
+
 	// Create a copy to return by value
 	result := *token
-	
+
 	// Return the original to the pool
 	TokenPool.Put(token)
-	
+
 	return result
 }
 

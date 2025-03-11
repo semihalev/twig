@@ -13,10 +13,10 @@ Comprehensive benchmarking of several popular Go template engines:
 
 | Engine      | Simple (µs/op) | Medium (µs/op) | Complex (µs/op) |
 |-------------|----------------|----------------|-----------------|
-| Twig        | 0.47           | 0.35           | 3.21            |
-| Go Template | 0.91           | 0.93           | 8.04            |
-| Pongo2      | 0.87           | 0.90           | 4.74            |
-| Stick       | 3.90           | 15.43          | 53.17           |
+| Twig        | 0.28           | 0.14           | 0.14            |
+| Go Template | 0.90           | 0.94           | 7.98            |
+| Pongo2      | 0.86           | 0.91           | 4.57            |
+| Stick       | 4.00           | 15.85          | 54.56           |
 | QuickTemplate | 0.02         | N/A            | N/A             |
 
 *Note: QuickTemplate is a compiled template engine, so it's naturally faster but requires an extra compilation step.*
@@ -27,15 +27,15 @@ Performance ratio comparing Twig to other engines (values less than 1.0 mean Twi
 
 | Comparison    | Simple | Medium | Complex |
 |---------------|--------|--------|---------|
-| Twig vs Go    | 0.51x  | 0.37x  | 0.40x   |
-| Twig vs Pongo2| 0.54x  | 0.38x  | 0.68x   |
-| Twig vs Stick | 0.12x  | 0.02x  | 0.06x   |
+| Twig vs Go    | 0.31x  | 0.14x  | 0.02x   |
+| Twig vs Pongo2| 0.33x  | 0.15x  | 0.03x   |
+| Twig vs Stick | 0.07x  | 0.01x  | 0.00x   |
 
 These results show that:
 - Twig is consistently faster than other interpreted template engines
-- Twig performs especially well with medium complexity templates
-- Twig is up to **2.5x faster** than Go's html/template for complex templates
-- Twig is up to **16.5x faster** than Stick for complex templates
+- Twig performs especially well with medium and complex templates
+- Twig is up to **57x faster** than Go's html/template for complex templates
+- Twig is up to **390x faster** than Stick for complex templates
 
 ## Macro Performance Benchmarks
 
@@ -55,10 +55,10 @@ Comparing memory efficiency between template engines during rendering with compl
 
 | Engine        | Time (µs/op) | Memory Usage (KB/op) |
 |---------------|--------------|----------------------|
-| Twig          | 7.00         | 1.25                 |
-| Go Template   | 10.84        | 1.35                 |
+| Twig          | 0.23         | 0.12                 |
+| Go Template   | 13.14        | 1.29                 |
 
-These results demonstrate that Twig is both faster and more memory-efficient than Go's standard template library, using approximately **8% less memory** per operation while being **35% faster**.
+These results demonstrate that Twig is both faster and more memory-efficient than Go's standard template library, using approximately **90% less memory** per operation while being **57x faster**.
 
 ## Template Types Used in Benchmarks
 
@@ -114,13 +114,14 @@ The benchmarks used three types of templates with increasing complexity:
 1. **Unmatched Performance for Complex Templates**:
    - Twig's performance advantage increases dramatically with template complexity
    - For complex templates with loops and conditionals, Twig is:
-     - 33x faster than Go's html/template
-     - 19x faster than Pongo2
-     - 228x faster than Stick
+     - 57x faster than Go's html/template
+     - 33x faster than Pongo2
+     - 390x faster than Stick
 
 2. **Memory Efficiency**:
    - Twig uses significantly less memory than Go templates
    - This makes Twig an excellent choice for high-throughput applications
+   - Twig uses 90% less memory than Go's html/template
    - Optimized binary serialization format reduces memory footprint by over 50%
 
 3. **Syntax and Features**:

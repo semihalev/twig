@@ -33,7 +33,7 @@ func BenchmarkNodePooling(b *testing.B) {
 			template: "Text {{ var }} {% if cond %}Conditional Content {{ value }}{% endif %}{% for item in items %}{{ item.name }}{% endfor %}",
 		},
 		{
-			name:     "ComplexTemplate",
+			name: "ComplexTemplate",
 			template: `
 				<div class="container">
 					<h1>{{ page.title }}</h1>
@@ -78,7 +78,7 @@ func BenchmarkNodePooling(b *testing.B) {
 
 	// Create a test context with all variables needed
 	testContext := map[string]interface{}{
-		"a": "A", "b": "B", "c": "C", "d": "D", "e": "E", 
+		"a": "A", "b": "B", "c": "C", "d": "D", "e": "E",
 		"f": "F", "g": "G", "h": "H", "i": "I", "j": "J",
 		"cond": true, "value": "Value", "var": "Variable",
 		"items": []map[string]interface{}{
@@ -88,8 +88,8 @@ func BenchmarkNodePooling(b *testing.B) {
 		"page": map[string]interface{}{"title": "Page Title"},
 		"user": map[string]interface{}{
 			"authenticated": true,
-			"name": "John Doe",
-			"admin": true,
+			"name":          "John Doe",
+			"admin":         true,
 		},
 		"admin_tools": []map[string]interface{}{
 			{"name": "Dashboard", "url": "/admin/dashboard"},
@@ -101,7 +101,7 @@ func BenchmarkNodePooling(b *testing.B) {
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {
 			engine := New()
-			
+
 			// Pre-compile the template to isolate rendering performance
 			tmpl, err := engine.ParseTemplate(tt.template)
 			if err != nil {
@@ -110,13 +110,13 @@ func BenchmarkNodePooling(b *testing.B) {
 
 			// Create a reusable buffer to avoid allocations in the benchmark loop
 			buf := new(bytes.Buffer)
-			
+
 			b.ResetTimer()
 			b.ReportAllocs()
-			
+
 			for i := 0; i < b.N; i++ {
 				buf.Reset()
-				
+
 				// Render directly to buffer to avoid string conversions
 				err = tmpl.RenderTo(buf, testContext)
 				if err != nil {
@@ -143,7 +143,7 @@ func BenchmarkTokenPooling(b *testing.B) {
 			template: "{% if cond %}Text{{ var }}{% else %}OtherText{{ var2 }}{% endif %}{% for item in items %}{{ item }}{% endfor %}",
 		},
 		{
-			name:     "ManyTokens",
+			name: "ManyTokens",
 			template: `
 				{% for i in range(1, 10) %}
 					{% if i > 5 %}
@@ -162,16 +162,16 @@ func BenchmarkTokenPooling(b *testing.B) {
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {
 			engine := New()
-			
+
 			b.ResetTimer()
 			b.ReportAllocs()
-			
+
 			for i := 0; i < b.N; i++ {
 				tmpl, err := engine.ParseTemplate(tt.template)
 				if err != nil {
 					b.Fatalf("Failed to parse template: %v", err)
 				}
-				
+
 				// Ensure the template is valid
 				if tmpl == nil {
 					b.Fatalf("Template is nil")
@@ -221,34 +221,34 @@ func BenchmarkFullTemplateLifecycle(b *testing.B) {
 		},
 		"user": map[string]interface{}{
 			"authenticated": true,
-			"name": "John Doe",
+			"name":          "John Doe",
 		},
 		"menu_items": []map[string]interface{}{
 			{
-				"label": "Home",
-				"url": "/",
-				"active": true,
+				"label":     "Home",
+				"url":       "/",
+				"active":    true,
 				"sub_items": []map[string]interface{}{},
 			},
 			{
-				"label": "Products",
-				"url": "/products",
+				"label":  "Products",
+				"url":    "/products",
 				"active": false,
 				"sub_items": []map[string]interface{}{
 					{
 						"label": "Category 1",
-						"url": "/products/cat1",
+						"url":   "/products/cat1",
 					},
 					{
 						"label": "Category 2",
-						"url": "/products/cat2",
+						"url":   "/products/cat2",
 					},
 				},
 			},
 			{
-				"label": "About",
-				"url": "/about",
-				"active": false,
+				"label":     "About",
+				"url":       "/about",
+				"active":    false,
 				"sub_items": []map[string]interface{}{},
 			},
 		},
@@ -256,16 +256,16 @@ func BenchmarkFullTemplateLifecycle(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	for i := 0; i < b.N; i++ {
 		engine := New()
-		
+
 		// Parse the template (tests token pooling)
 		tmpl, err := engine.ParseTemplate(complexTemplate)
 		if err != nil {
 			b.Fatalf("Failed to parse template: %v", err)
 		}
-		
+
 		// Render the template (tests node pooling)
 		_, err = tmpl.Render(testContext)
 		if err != nil {

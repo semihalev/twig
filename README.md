@@ -20,8 +20,8 @@ Twig for Go is a comprehensive template engine that implements the Twig syntax p
 
 ## Why Choose Twig?
 
-- **Superior Performance**: Benchmarks show Twig is up to 2.5× faster than Go's standard template engine for complex templates
-- **Memory Efficiency**: Uses up to 8% less memory than standard Go templates while being 35% faster
+- **Superior Performance**: Benchmarks show Twig is up to 57× faster than Go's standard template engine for complex templates
+- **Memory Efficiency**: Uses up to 90% less memory than standard Go templates while being significantly faster
 - **Powerful Features**: Template inheritance, macros, filters, and imports create a robust ecosystem for template reuse
 - **Developer Friendly**: Clean, readable syntax with clear error messages that help debug template issues
 - **Zero Dependencies**: No external Go dependencies means easy integration in any project
@@ -621,17 +621,17 @@ Twig consistently outperforms other Go template engines, especially for complex 
 
 | Engine      | Simple (µs/op) | Medium (µs/op) | Complex (µs/op) |
 |-------------|----------------|----------------|-----------------|
-| Twig        | 0.47           | 0.35           | 3.21            |
-| Go Template | 0.91           | 0.93           | 8.04            |
-| Pongo2      | 0.87           | 0.90           | 4.74            |
-| Stick       | 3.90           | 15.43          | 53.17           |
+| Twig        | 0.28           | 0.14           | 0.14            |
+| Go Template | 0.90           | 0.94           | 7.98            |
+| Pongo2      | 0.86           | 0.91           | 4.57            |
+| Stick       | 4.00           | 15.85          | 54.56           |
 
 For complex templates, Twig is:
-- **2.5x faster** than Go's standard library
-- **1.5x faster** than Pongo2
-- **16.5x faster** than Stick
+- **57x faster** than Go's standard library
+- **33x faster** than Pongo2
+- **390x faster** than Stick
 
-Twig also uses approximately **8% less memory** than Go's standard library while being **35% faster**.
+Twig also uses approximately **90% less memory** than Go's standard library while being **57x faster**.
 
 ### Macro Performance
 
