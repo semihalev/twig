@@ -1,5 +1,7 @@
 test_temp/
 .DS_Store
+coverage.html
+coverage.out
 SOLUTION.md
 FINDINGS.md
 PROGRESS.md

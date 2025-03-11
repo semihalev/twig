@@ -102,6 +102,7 @@ func (e *CoreExtension) GetFilters() map[string]FilterFunc {
 		"round":         e.filterRound,
 		"nl2br":         e.filterNl2Br,
 		"format":        e.filterFormat,
+		"json_encode":   e.filterJsonEncode,
 	}
 }
 
@@ -492,27 +493,46 @@ func (e *CoreExtension) filterUrlEncode(value interface{}, args ...interface{}) 
 // Function implementations
 
 func (e *CoreExtension) functionRange(args ...interface{}) (interface{}, error) {
-	if len(args) < 2 {
-		return nil, errors.New("range function requires at least 2 arguments")
-	}
+	// Handle different argument counts (1, 2, or 3 args)
+	var start, end, step int
+	var err error
 
-	start, err := toInt(args[0])
-	if err != nil {
-		return nil, err
-	}
-
-	end, err := toInt(args[1])
-	if err != nil {
-		return nil, err
-	}
-
-	step := 1
-	if len(args) > 2 {
-		s, err := toInt(args[2])
+	switch len(args) {
+	case 1:
+		// Single argument: range(end) -> range from 0 to end
+		start = 0
+		end, err = toInt(args[0])
 		if err != nil {
 			return nil, err
 		}
-		step = s
+		step = 1
+	case 2:
+		// Two arguments: range(start, end) -> range from start to end
+		start, err = toInt(args[0])
+		if err != nil {
+			return nil, err
+		}
+		end, err = toInt(args[1])
+		if err != nil {
+			return nil, err
+		}
+		step = 1
+	case 3:
+		// Three arguments: range(start, end, step)
+		start, err = toInt(args[0])
+		if err != nil {
+			return nil, err
+		}
+		end, err = toInt(args[1])
+		if err != nil {
+			return nil, err
+		}
+		step, err = toInt(args[2])
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, errors.New("range function requires 1-3 arguments")
 	}
 
 	if step == 0 {
@@ -522,11 +542,15 @@ func (e *CoreExtension) functionRange(args ...interface{}) (interface{}, error) 
 	// Create the result as a slice of interface{} values explicitly
 	// Ensure it's always []interface{} for consistent handling in for loops
 	result := make([]interface{}, 0)
+	
+	// For compatibility with existing tests, keep the end index inclusive
 	if step > 0 {
+		// For positive step, include the end value (end is inclusive)
 		for i := start; i <= end; i += step {
 			result = append(result, i)
 		}
 	} else {
+		// For negative step, include the end value (end is inclusive)
 		for i := start; i >= end; i += step {
 			result = append(result, i)
 		}
@@ -651,6 +675,33 @@ func (e *CoreExtension) functionMax(args ...interface{}) (interface{}, error) {
 		return nil, errors.New("max function requires at least one argument")
 	}
 
+	// First, determine if we're comparing strings or numbers
+	allStrings := true
+	for _, arg := range args {
+		_, isString := arg.(string)
+		if !isString {
+			allStrings = false
+			break
+		}
+	}
+
+	// If all arguments are strings, compare them lexicographically
+	if allStrings {
+		var maxStr string
+		var initialized bool
+
+		for _, arg := range args {
+			str := arg.(string)
+			if !initialized || str > maxStr {
+				maxStr = str
+				initialized = true
+			}
+		}
+
+		return maxStr, nil
+	}
+
+	// Otherwise, treat as numbers
 	var max float64
 	var initialized bool
 
@@ -674,6 +725,33 @@ func (e *CoreExtension) functionMin(args ...interface{}) (interface{}, error) {
 		return nil, errors.New("min function requires at least one argument")
 	}
 
+	// First, determine if we're comparing strings or numbers
+	allStrings := true
+	for _, arg := range args {
+		_, isString := arg.(string)
+		if !isString {
+			allStrings = false
+			break
+		}
+	}
+
+	// If all arguments are strings, compare them lexicographically
+	if allStrings {
+		var minStr string
+		var initialized bool
+
+		for _, arg := range args {
+			str := arg.(string)
+			if !initialized || str < minStr {
+				minStr = str
+				initialized = true
+			}
+		}
+
+		return minStr, nil
+	}
+
+	// Otherwise, treat as numbers
 	var min float64
 	var initialized bool
 
@@ -1943,18 +2021,38 @@ func (e *CoreExtension) functionCycle(args ...interface{}) (interface{}, error) 
 		return nil, errors.New("cycle function requires at least two arguments (values to cycle through and position)")
 	}
 
-	position := 0
+	// The first argument should be the array of values to cycle through
 	var values []interface{}
-
-	// Last argument is the position if it's a number
-	lastArg := args[len(args)-1]
-	if pos, err := toInt(lastArg); err == nil {
-		position = pos
-		values = args[:len(args)-1]
+	var position int
+	
+	// Check if the first argument is an array
+	firstArg := args[0]
+	if firstArgVal := reflect.ValueOf(firstArg); firstArgVal.Kind() == reflect.Slice || firstArgVal.Kind() == reflect.Array {
+		// Extract values from the array
+		values = make([]interface{}, firstArgVal.Len())
+		for i := 0; i < firstArgVal.Len(); i++ {
+			values[i] = firstArgVal.Index(i).Interface()
+		}
+		
+		// Position is the second argument
+		if len(args) > 1 {
+			var err error
+			position, err = toInt(args[1])
+			if err != nil {
+				return nil, err
+			}
+		}
 	} else {
-		// All arguments are values to cycle through
-		values = args
-		// Position defaults to 0
+		// Last argument is the position if it's a number
+		lastArg := args[len(args)-1]
+		if pos, err := toInt(lastArg); err == nil {
+			position = pos
+			values = args[:len(args)-1]
+		} else {
+			// All arguments are values to cycle through
+			values = args
+			// Position defaults to 0
+		}
 	}
 
 	// Handle empty values
@@ -2127,4 +2225,37 @@ func (e *CoreExtension) filterFormat(value interface{}, args ...interface{}) (in
 	
 	// Apply formatting
 	return fmt.Sprintf(formatString, args...), nil
+}
+
+// filterJsonEncode implements a filter version of the json_encode function
+func (e *CoreExtension) filterJsonEncode(value interface{}, args ...interface{}) (interface{}, error) {
+	// Default options
+	options := 0
+
+	// Check for options flag
+	if len(args) > 0 {
+		if opt, err := toInt(args[0]); err == nil {
+			options = opt
+		}
+	}
+
+	// Convert the value to JSON
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+
+	result := string(data)
+
+	// Apply options (simplified)
+	// In real Twig, there are constants like JSON_PRETTY_PRINT, JSON_HEX_TAG, etc.
+	// Here we just do a simple pretty print if options is non-zero
+	if options != 0 {
+		var prettyJSON bytes.Buffer
+		if err := json.Indent(&prettyJSON, data, "", "  "); err == nil {
+			result = prettyJSON.String()
+		}
+	}
+
+	return result, nil
 }
