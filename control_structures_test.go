@@ -393,16 +393,6 @@ func TestRangeFunctionInForLoop(t *testing.T) {
 	}
 }
 
-// Helper function to check for substring
-func containsSubstring(s, substr string) bool {
-	for i := 0; i < len(s); i++ {
-		if i+len(substr) <= len(s) && s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
 // TestConditionalExpressions tests conditional expressions (ternary)
 func TestConditionalExpressions(t *testing.T) {
 	engine := New()

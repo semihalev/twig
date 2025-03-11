@@ -408,12 +408,6 @@ func processEscapeSequences(s string) string {
 	return result.String()
 }
 
-// Leave HTML attributes untouched - no manipulation
-func fixHTMLAttributes(input string) string {
-	// Don't modify HTML attributes at all - return as-is
-	return input
-}
-
 // Parse the outer level of a template (text, print tags, blocks)
 func (p *Parser) parseOuterTemplate() ([]Node, error) {
 	var nodes []Node
@@ -546,24 +540,24 @@ func (p *Parser) parseExpression() (Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Check for array access with square brackets
 	for p.tokenIndex < len(p.tokens) &&
 		p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 		p.tokens[p.tokenIndex].Value == "[" {
-		
+
 		// Get the line number for error reporting
 		line := p.tokens[p.tokenIndex].Line
-		
+
 		// Skip the opening bracket
 		p.tokenIndex++
-		
+
 		// Parse the index expression
 		indexExpr, err := p.parseExpression()
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Expect closing bracket
 		if p.tokenIndex >= len(p.tokens) ||
 			p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
@@ -571,7 +565,7 @@ func (p *Parser) parseExpression() (Node, error) {
 			return nil, fmt.Errorf("expected closing bracket after array index at line %d", line)
 		}
 		p.tokenIndex++ // Skip closing bracket
-		
+
 		// Create a GetItemNode
 		expr = NewGetItemNode(expr, indexExpr, line)
 	}
@@ -798,7 +792,7 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 		if token.Value == "[" {
 			return p.parseArrayExpression()
 		}
-		
+
 		// Handle hash/map literals {'key': value}
 		if token.Value == "{" {
 			return p.parseMapExpression()
@@ -807,27 +801,27 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 		// Handle parenthesized expressions
 		if token.Value == "(" {
 			p.tokenIndex++ // Skip "("
-			
+
 			// Check for unary operator immediately after opening parenthesis
-			if p.tokenIndex < len(p.tokens) && 
-			   p.tokens[p.tokenIndex].Type == TOKEN_OPERATOR && 
-			   (p.tokens[p.tokenIndex].Value == "-" || p.tokens[p.tokenIndex].Value == "+") {
-				
+			if p.tokenIndex < len(p.tokens) &&
+				p.tokens[p.tokenIndex].Type == TOKEN_OPERATOR &&
+				(p.tokens[p.tokenIndex].Value == "-" || p.tokens[p.tokenIndex].Value == "+") {
+
 				// Handle unary operation inside parentheses
 				unaryToken := p.tokens[p.tokenIndex]
 				operator := unaryToken.Value
 				line := unaryToken.Line
 				p.tokenIndex++ // Skip the operator
-				
+
 				// Parse the operand
 				operand, err := p.parseExpression()
 				if err != nil {
 					return nil, err
 				}
-				
+
 				// Create a unary node
 				expr := NewUnaryNode(operator, operand, line)
-				
+
 				// Expect closing parenthesis
 				if p.tokenIndex >= len(p.tokens) ||
 					p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
@@ -835,10 +829,10 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 					return nil, fmt.Errorf("expected closing parenthesis at line %d", token.Line)
 				}
 				p.tokenIndex++ // Skip ")"
-				
+
 				return expr, nil
 			}
-			
+
 			// Regular parenthesized expression
 			expr, err := p.parseExpression()
 			if err != nil {
@@ -1502,7 +1496,7 @@ func (p *Parser) parseFor(parser *Parser) (Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Check for filter operator (|) - needed for cases where filter detection might be missed
 	if IsDebugEnabled() {
 		LogDebug("For loop sequence expression type: %T", sequence)

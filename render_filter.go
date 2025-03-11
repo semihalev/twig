@@ -2,7 +2,6 @@ package twig
 
 import (
 	"fmt"
-	"strconv"
 )
 
 // ApplyFilter applies a filter to a value
@@ -99,8 +98,8 @@ func (ctx *RenderContext) evaluateFilterNode(n *FilterNode) (interface{}, error)
 	if err != nil {
 		return nil, err
 	}
-	
-	// Log for debugging 
+
+	// Log for debugging
 	if IsDebugEnabled() {
 		LogDebug("Evaluating filter chain: %s on value type %T", n.filter, value)
 	}
@@ -118,19 +117,4 @@ func (ctx *RenderContext) evaluateFilterNode(n *FilterNode) (interface{}, error)
 		LogDebug("Filter result type: %T", result)
 	}
 	return result, nil
-}
-
-// Helper function to check if a string is numeric
-func isNumeric(s string) bool {
-	_, err1 := strconv.ParseInt(s, 10, 64)
-	if err1 == nil {
-		return true
-	}
-
-	_, err2 := strconv.ParseFloat(s, 64)
-	if err2 == nil {
-		return true
-	}
-
-	return false
 }

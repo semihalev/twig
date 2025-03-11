@@ -38,6 +38,9 @@ go test ./...
 # Build the project
 go build
 
+# Format the code
+gofmt -w -s .
+
 # Lint the code
 go vet
 ```
