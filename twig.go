@@ -214,14 +214,15 @@ func (e *Engine) RenderTo(w io.Writer, name string, context map[string]interface
 func (e *Engine) Load(name string) (*Template, error) {
 	// Only check the cache if caching is enabled
 	if e.environment.cache {
+		// Use a quick check under read lock first to avoid contention
 		e.mu.RLock()
 		tmpl, ok := e.templates[name]
+		e.mu.RUnlock()
 
 		// If template exists in cache
 		if ok {
-			// If auto-reload is disabled, return the cached template immediately under read lock
+			// If auto-reload is disabled, return the cached template immediately
 			if !e.autoReload {
-				defer e.mu.RUnlock()
 				return tmpl, nil
 			}
 
@@ -241,19 +242,17 @@ func (e *Engine) Load(name string) (*Template, error) {
 
 			// If no reload needed, return cached template
 			if !needsReload {
-				defer e.mu.RUnlock()
 				return tmpl, nil
 			}
 		}
-
-		// Template not found in cache or needs reloading
-		e.mu.RUnlock()
 	}
 
 	// Template not in cache or cache disabled or needs reloading
+	// Try to load the template
 	var lastModified int64
 	var sourceLoader Loader
 	var loaderErrors []error
+	var template *Template
 
 	for _, loader := range e.loaders {
 		source, err := loader.Load(name)
@@ -278,7 +277,7 @@ func (e *Engine) Load(name string) (*Template, error) {
 			return nil, NewError(err, name, 0, 0, source)
 		}
 
-		template := &Template{
+		template = &Template{
 			name:         name,
 			source:       source,
 			nodes:        nodes,
@@ -288,31 +287,37 @@ func (e *Engine) Load(name string) (*Template, error) {
 			lastModified: lastModified,
 		}
 
-		// Only cache if caching is enabled
-		if e.environment.cache {
-			e.mu.Lock()
-			e.templates[name] = template
-			e.mu.Unlock()
-		}
-
-		return template, nil
+		// Successfully loaded template
+		break
 	}
 
-	// If we have collected errors from loaders, include them in the error message
-	if len(loaderErrors) > 0 {
-		errorDetails := strings.Builder{}
-		errorDetails.WriteString(fmt.Sprintf("Template '%s' not found. Tried %d loaders:\n", name, len(loaderErrors)))
+	// If we failed to load the template from any loader
+	if template == nil {
+		// If we have collected errors from loaders, include them in the error message
+		if len(loaderErrors) > 0 {
+			errorDetails := strings.Builder{}
+			errorDetails.WriteString(fmt.Sprintf("Template '%s' not found. Tried %d loaders:\n", name, len(loaderErrors)))
 
-		for i, err := range loaderErrors {
-			errorDetails.WriteString(fmt.Sprintf("  %d) %s\n", i+1, err.Error()))
+			for i, err := range loaderErrors {
+				errorDetails.WriteString(fmt.Sprintf("  %d) %s\n", i+1, err.Error()))
+			}
+
+			LogError(ErrTemplateNotFound, errorDetails.String())
+			return nil, fmt.Errorf("%w: %s", ErrTemplateNotFound, errorDetails.String())
 		}
 
-		LogError(ErrTemplateNotFound, errorDetails.String())
-		return nil, fmt.Errorf("%w: %s", ErrTemplateNotFound, errorDetails.String())
+		LogError(ErrTemplateNotFound, fmt.Sprintf("Template '%s' not found. No loaders configured.", name))
+		return nil, fmt.Errorf("%w: '%s'", ErrTemplateNotFound, name)
 	}
 
-	LogError(ErrTemplateNotFound, fmt.Sprintf("Template '%s' not found. No loaders configured.", name))
-	return nil, fmt.Errorf("%w: '%s'", ErrTemplateNotFound, name)
+	// Only cache if caching is enabled
+	if e.environment.cache {
+		e.mu.Lock()
+		e.templates[name] = template
+		e.mu.Unlock()
+	}
+
+	return template, nil
 }
 
 // RegisterString registers a template from a string source
