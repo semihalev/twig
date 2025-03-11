@@ -154,7 +154,7 @@ func (n *LiteralNode) Render(w io.Writer, ctx *RenderContext) error {
 		str = ctx.ToString(v)
 	}
 
-	_, err := w.Write([]byte(str))
+	_, err := WriteString(w, str)
 	return err
 }
 
@@ -246,7 +246,7 @@ func (n *VariableNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	str := ctx.ToString(value)
-	_, err = w.Write([]byte(str))
+	_, err = WriteString(w, str)
 	return err
 }
 
@@ -273,7 +273,7 @@ func (n *GetAttrNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	str := ctx.ToString(value)
-	_, err = w.Write([]byte(str))
+	_, err = WriteString(w, str)
 	return err
 }
 
@@ -295,7 +295,7 @@ func (n *GetItemNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	str := ctx.ToString(value)
-	_, err = w.Write([]byte(str))
+	_, err = WriteString(w, str)
 	return err
 }
 
@@ -307,7 +307,7 @@ func (n *BinaryNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	str := ctx.ToString(result)
-	_, err = w.Write([]byte(str))
+	_, err = WriteString(w, str)
 	return err
 }
 
@@ -319,7 +319,7 @@ func (n *FilterNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	str := ctx.ToString(result)
-	_, err = w.Write([]byte(str))
+	_, err = WriteString(w, str)
 	return err
 }
 
@@ -331,7 +331,7 @@ func (n *TestNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	str := ctx.ToString(result)
-	_, err = w.Write([]byte(str))
+	_, err = WriteString(w, str)
 	return err
 }
 
@@ -343,7 +343,7 @@ func (n *UnaryNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	str := ctx.ToString(result)
-	_, err = w.Write([]byte(str))
+	_, err = WriteString(w, str)
 	return err
 }
 
@@ -355,7 +355,7 @@ func (n *ConditionalNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	str := ctx.ToString(result)
-	_, err = w.Write([]byte(str))
+	_, err = WriteString(w, str)
 	return err
 }
 
@@ -367,7 +367,7 @@ func (n *ArrayNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	str := ctx.ToString(result)
-	_, err = w.Write([]byte(str))
+	_, err = WriteString(w, str)
 	return err
 }
 
@@ -379,7 +379,7 @@ func (n *HashNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	str := ctx.ToString(result)
-	_, err = w.Write([]byte(str))
+	_, err = WriteString(w, str)
 	return err
 }
 
@@ -391,7 +391,7 @@ func (n *FunctionNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	str := ctx.ToString(result)
-	_, err = w.Write([]byte(str))
+	_, err = WriteString(w, str)
 	return err
 }
 

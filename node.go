@@ -927,7 +927,7 @@ func renderVariableString(text string, ctx *RenderContext, w io.Writer) error {
 	// Check if the string contains variable references like {{ varname }}
 	if !strings.Contains(text, "{{") {
 		// If not, just write the text directly
-		_, err := w.Write([]byte(text))
+		_, err := WriteString(w, text)
 		return err
 	}
 
@@ -1296,7 +1296,7 @@ func (n *RootNode) Children() []Node {
 func (n *TextNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Simply write the original content without modification
 	// This preserves HTML flow and whitespace exactly as in the template
-	_, err := w.Write([]byte(n.content))
+	_, err := WriteString(w, n.content)
 	return err
 }
 
@@ -1360,6 +1360,6 @@ func (n *PrintNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// Write the result as-is without modification
 	// Let user handle proper quoting in templates
-	_, err = w.Write([]byte(str))
+	_, err = WriteString(w, str)
 	return err
 }
