@@ -617,7 +617,21 @@ func (n *BlockNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Determine which content to use - from context blocks or default
 	var content []Node
 
-	// If we have blocks defined in the context (e.g., from extends), use those
+	// Store the current block content as parent content if needed
+	// This is critical for multi-level inheritance
+	if _, exists := ctx.parentBlocks[n.name]; !exists {
+		// First time we've seen this block - store its original content
+		// This needs to happen for any block, not just in extending templates
+		if blockContent, ok := ctx.blocks[n.name]; ok && len(blockContent) > 0 {
+			// Store the content from blocks
+			ctx.parentBlocks[n.name] = blockContent
+		} else {
+			// Otherwise store the default body
+			ctx.parentBlocks[n.name] = n.body
+		}
+	}
+
+	// Now get the content to render
 	if blockContent, ok := ctx.blocks[n.name]; ok && len(blockContent) > 0 {
 		content = blockContent
 	} else {
@@ -629,9 +643,13 @@ func (n *BlockNode) Render(w io.Writer, ctx *RenderContext) error {
 	previousBlock := ctx.currentBlock
 	ctx.currentBlock = n
 
+	// Create an isolated context for rendering this block
+	// This prevents parent() from accessing the wrong block context
+	blockCtx := ctx
+
 	// Render the appropriate content
 	for _, node := range content {
-		err := node.Render(w, ctx)
+		err := node.Render(w, blockCtx)
 		if err != nil {
 			return err
 		}
@@ -711,7 +729,29 @@ func (n *ExtendsNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Ensure the context is released even if an error occurs
 	defer parentCtx.Release()
 
-	// Copy all block definitions from the child context to the parent context
+	// First, copy any existing parent blocks to maintain the inheritance chain
+	// This allows for multi-level parent() calls to work properly
+	for name, nodes := range ctx.parentBlocks {
+		// Copy to the new context to preserve the inheritance chain
+		parentCtx.parentBlocks[name] = nodes
+	}
+
+	// Extract blocks from the parent template and store them as parent blocks
+	// for any blocks defined in the child but not yet in the parent chain
+	if rootNode, ok := parentTemplate.nodes.(*RootNode); ok {
+		for _, child := range rootNode.Children() {
+			if block, ok := child.(*BlockNode); ok {
+				// If we don't already have a parent for this block,
+				// use the parent template's block definition
+				if _, exists := parentCtx.parentBlocks[block.name]; !exists {
+					parentCtx.parentBlocks[block.name] = block.body
+				}
+			}
+		}
+	}
+
+	// Finally, copy all block definitions from the child context
+	// These are the blocks that will actually be rendered
 	for name, nodes := range ctx.blocks {
 		parentCtx.blocks[name] = nodes
 	}
@@ -1380,12 +1420,13 @@ func (n *RootNode) Render(w io.Writer, ctx *RenderContext) error {
 		hasChildBlocks = true
 	}
 
-	// Collect blocks but only if they don't already exist from a child template
+	// First register all blocks in this template before processing extends
+	// Needed to ensure all blocks are available for parent() calls
 	for _, child := range n.children {
 		if block, ok := child.(*BlockNode); ok {
-			// If child blocks exist, don't override them
+			// Only register blocks that haven't been defined by a child template
 			if !hasChildBlocks || ctx.blocks[block.name] == nil {
-				// Store the blocks from this template
+				// Register the block
 				ctx.blocks[block.name] = block.body
 			}
 		} else if ext, ok := child.(*ExtendsNode); ok {
@@ -1394,9 +1435,10 @@ func (n *RootNode) Render(w io.Writer, ctx *RenderContext) error {
 		}
 	}
 
-	// If this template extends another, handle differently
+	// If this template extends another, handle that first
 	if extendsNode != nil {
-		// Render the extends node, which will load and render the parent template
+		// Let the extends node handle the rendering, passing along
+		// all our blocks so they're available to the parent template
 		return extendsNode.Render(w, ctx)
 	}
 
@@ -1470,10 +1512,23 @@ func (n *PrintNode) Render(w io.Writer, ctx *RenderContext) error {
 		return err
 	}
 
-	// Check if result is a callable (for macros)
+	// Check if result is a callable for macros
 	if callable, ok := result.(func(io.Writer) error); ok {
 		// Execute the callable directly
 		return callable(w)
+	}
+
+	// Handle special case for parent() function which returns func(*RenderContext)(interface{}, error)
+	if parentFunc, ok := result.(func(*RenderContext) (interface{}, error)); ok {
+		// This is the parent function - execute it with the current context
+		parentResult, err := parentFunc(ctx)
+		if err != nil {
+			return err
+		}
+
+		// Write the parent result
+		_, err = WriteString(w, ctx.ToString(parentResult))
+		return err
 	}
 
 	// Convert result to string

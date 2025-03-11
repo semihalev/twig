@@ -122,6 +122,7 @@ func (e *CoreExtension) GetFunctions() map[string]FunctionFunc {
 		"json_encode": e.functionJsonEncode,
 		"length":      e.functionLength,
 		"merge":       e.functionMerge,
+		"parent":      e.functionParent,
 	}
 }
 
@@ -2209,6 +2210,71 @@ func (e *CoreExtension) functionMerge(args ...interface{}) (interface{}, error) 
 	}
 
 	return nil, fmt.Errorf("cannot merge %T, expected array or map", base)
+}
+
+// functionParent implements the parent() function used in template inheritance
+// It renders the content of the parent block when called within a child block
+func (e *CoreExtension) functionParent(args ...interface{}) (interface{}, error) {
+	// This is a special function that requires access to the RenderContext
+	// We return a function that will be called by the RenderContext
+	return func(ctx *RenderContext) (interface{}, error) {
+		if ctx == nil {
+			return nil, errors.New("parent() function can only be used within a block")
+		}
+
+		if ctx.currentBlock == nil {
+			return nil, errors.New("parent() function can only be used within a block")
+		}
+
+		// Get the name of the current block
+		blockName := ctx.currentBlock.name
+
+		// Debug logging
+		LogDebug("parent() call for block '%s'", blockName)
+		LogDebug("inParentCall=%v, currentBlock=%p", ctx.inParentCall, ctx.currentBlock)
+		LogDebug("Blocks in context: %v", getMapKeys(ctx.blocks))
+		LogDebug("Parent blocks in context: %v", getMapKeys(ctx.parentBlocks))
+
+		// Check for parent content in the parentBlocks map
+		parentContent, ok := ctx.parentBlocks[blockName]
+		if !ok || len(parentContent) == 0 {
+			return "", fmt.Errorf("no parent block content found for block '%s'", blockName)
+		}
+
+		// For the simplest possible solution, render the parent content directly
+		// This is the most direct way to avoid recursion issues
+		var result bytes.Buffer
+
+		// Create a clean context without parent() function to prevent recursion
+		cleanCtx := NewRenderContext(ctx.env, ctx.context, ctx.engine)
+		defer cleanCtx.Release()
+
+		// Copy all blocks and variables
+		for name, content := range ctx.blocks {
+			cleanCtx.blocks[name] = content
+		}
+
+		// The key here is to NOT set currentBlock - this breaks the recursion chain
+		cleanCtx.currentBlock = nil
+
+		// Render each node with the clean context
+		for _, node := range parentContent {
+			if err := node.Render(&result, cleanCtx); err != nil {
+				return nil, err
+			}
+		}
+
+		return result.String(), nil
+	}, nil
+}
+
+// Helper functions for debugging
+func getMapKeys(m map[string][]Node) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func escapeHTML(s string) string {

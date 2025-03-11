@@ -20,20 +20,23 @@ type RenderContext struct {
 	env          *Environment
 	context      map[string]interface{}
 	blocks       map[string][]Node
+	parentBlocks map[string][]Node // Original block content from parent templates
 	macros       map[string]Node
 	parent       *RenderContext
 	engine       *Engine    // Reference to engine for loading templates
 	extending    bool       // Whether this template extends another
 	currentBlock *BlockNode // Current block being rendered (for parent() function)
+	inParentCall bool       // Flag to indicate if we're currently rendering a parent() call
 }
 
 // renderContextPool is a sync.Pool for RenderContext objects
 var renderContextPool = sync.Pool{
 	New: func() interface{} {
 		return &RenderContext{
-			context: make(map[string]interface{}),
-			blocks:  make(map[string][]Node),
-			macros:  make(map[string]Node),
+			context:      make(map[string]interface{}),
+			blocks:       make(map[string][]Node),
+			parentBlocks: make(map[string][]Node),
+			macros:       make(map[string]Node),
 		}
 	},
 }
@@ -58,6 +61,7 @@ func NewRenderContext(env *Environment, context map[string]interface{}, engine *
 	ctx.extending = false
 	ctx.currentBlock = nil
 	ctx.parent = nil
+	ctx.inParentCall = false
 
 	// Copy the context values
 	if context != nil {
@@ -82,6 +86,9 @@ func (ctx *RenderContext) Release() {
 	}
 	for k := range ctx.blocks {
 		delete(ctx.blocks, k)
+	}
+	for k := range ctx.parentBlocks {
+		delete(ctx.parentBlocks, k)
 	}
 	for k := range ctx.macros {
 		delete(ctx.macros, k)
@@ -279,6 +286,12 @@ func (ctx *RenderContext) CallFunction(name string, args []interface{}) (interfa
 	// Check if it's a function in the environment
 	if ctx.env != nil {
 		if fn, ok := ctx.env.functions[name]; ok {
+			// Special case for parent() function which needs access to the RenderContext
+			if name == "parent" {
+				return fn(args...)
+			}
+
+			// Regular function call
 			return fn(args...)
 		}
 	}

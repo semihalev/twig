@@ -634,6 +634,30 @@ func (t *Template) SaveCompiled() ([]byte, error) {
 	return SerializeCompiledTemplate(compiled)
 }
 
+// GetBlock finds a block in the template by name
+func (t *Template) GetBlock(name string) (*BlockNode, bool) {
+	// If the template has no nodes, return false
+	if t.nodes == nil {
+		return nil, false
+	}
+
+	// Find blocks in the template
+	switch rootNode := t.nodes.(type) {
+	case *RootNode:
+		// Search through all nodes in the root
+		for _, node := range rootNode.Children() {
+			if blockNode, ok := node.(*BlockNode); ok {
+				if blockNode.name == name {
+					return blockNode, true
+				}
+			}
+		}
+	}
+
+	// No matching block found
+	return nil, false
+}
+
 // StringBuffer is a simple buffer for string building
 type StringBuffer struct {
 	buf bytes.Buffer
