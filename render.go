@@ -8,9 +8,11 @@ import (
 	"math"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // RenderContext holds the state during template rendering
@@ -884,21 +886,64 @@ type attributeCacheKey struct {
 
 // attributeCacheEntry represents a cached attribute lookup result
 type attributeCacheEntry struct {
-	fieldIndex  int  // Index of the field (-1 if not a field)
-	isMethod    bool // Whether this is a method
-	methodIndex int  // Index of the method (-1 if not a method)
-	ptrMethod   bool // Whether the method is on the pointer type
+	fieldIndex  int       // Index of the field (-1 if not a field)
+	isMethod    bool      // Whether this is a method
+	methodIndex int       // Index of the method (-1 if not a method)
+	ptrMethod   bool      // Whether the method is on the pointer type
+	lastAccess  time.Time // When this entry was last accessed
+	accessCount int       // How many times this entry has been accessed
 }
 
 // attributeCache caches attribute lookups by type and attribute name
+// Uses a simplified LRU strategy for eviction - when cache fills up,
+// we remove 10% of the least recently used entries to make room
 var attributeCache = struct {
 	sync.RWMutex
-	m        map[attributeCacheKey]attributeCacheEntry
-	maxSize  int // Maximum number of entries to cache
-	currSize int // Current number of entries
+	m           map[attributeCacheKey]attributeCacheEntry
+	maxSize     int     // Maximum number of entries to cache
+	currSize    int     // Current number of entries
+	evictionPct float64 // Percentage of cache to evict when full (0.0-1.0)
 }{
-	m:       make(map[attributeCacheKey]attributeCacheEntry),
-	maxSize: 1000, // Limit cache to 1000 entries to prevent unbounded growth
+	m:           make(map[attributeCacheKey]attributeCacheEntry),
+	maxSize:     1000, // Limit cache to 1000 entries to prevent unbounded growth
+	evictionPct: 0.1,  // Evict 10% of entries when cache is full
+}
+
+// evictLRUEntries removes the least recently used entries from the cache
+// This function assumes that the caller holds the attributeCache lock
+func evictLRUEntries() {
+	// Calculate how many entries to evict
+	numToEvict := int(float64(attributeCache.maxSize) * attributeCache.evictionPct)
+	if numToEvict < 1 {
+		numToEvict = 1 // Always evict at least one entry
+	}
+
+	// Create a slice of entries to sort by last access time
+	type cacheItem struct {
+		key   attributeCacheKey
+		entry attributeCacheEntry
+	}
+
+	entries := make([]cacheItem, 0, attributeCache.currSize)
+	for k, v := range attributeCache.m {
+		entries = append(entries, cacheItem{k, v})
+	}
+
+	// Sort entries by last access time (oldest first)
+	sort.Slice(entries, func(i, j int) bool {
+		// If access counts differ by a significant amount, prefer keeping frequently accessed items
+		if entries[i].entry.accessCount < entries[j].entry.accessCount/2 {
+			return true
+		}
+		// Otherwise, use recency as the deciding factor
+		return entries[i].entry.lastAccess.Before(entries[j].entry.lastAccess)
+	})
+
+	// Remove the oldest entries
+	for i := 0; i < numToEvict && i < len(entries); i++ {
+		delete(attributeCache.m, entries[i].key)
+		attributeCache.currSize--
+	}
 }
 
 // getItem gets an item from a container (array, slice, map) by index or key
@@ -1022,31 +1067,43 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 	// Get a read lock to check the cache first
 	attributeCache.RLock()
 	entry, found := attributeCache.m[key]
-	attributeCache.RUnlock()
+	if found {
+		// Found in cache, update access stats later with a write lock
+		attributeCache.RUnlock()
 
-	// If not found, perform the reflection lookup with proper locking
-	if !found {
-		// Get a write lock for updating the cache
+		// Update the entry's access statistics with a write lock
+		attributeCache.Lock()
+		// Need to check again after acquiring write lock
+		if cachedEntry, stillExists := attributeCache.m[key]; stillExists {
+			// Update access time and count
+			cachedEntry.lastAccess = time.Now()
+			cachedEntry.accessCount++
+			attributeCache.m[key] = cachedEntry
+			entry = cachedEntry
+		}
+		attributeCache.Unlock()
+	} else {
+		// Not found in cache - release read lock and get write lock for update
+		attributeCache.RUnlock()
 		attributeCache.Lock()
 
 		// Double-check if another goroutine added it while we were waiting
 		entry, found = attributeCache.m[key]
 		if !found {
+			// Still not found, need to populate the cache
+
 			// Check if cache has reached maximum size
 			if attributeCache.currSize >= attributeCache.maxSize {
-				// Cache is full, remove a random entry
-				// This is a simple strategy - in the future, we could use LRU
-				for k := range attributeCache.m {
-					delete(attributeCache.m, k)
-					attributeCache.currSize--
-					// Just remove one entry for now
-					break
-				}
+				// Cache is full, use our LRU eviction strategy
+				evictLRUEntries()
 			}
-			
+
+			// Create a new entry with current timestamp
 			entry = attributeCacheEntry{
 				fieldIndex:  -1,
 				methodIndex: -1,
+				lastAccess:  time.Now(),
+				accessCount: 1,
 			}
 
 			// Look for a field

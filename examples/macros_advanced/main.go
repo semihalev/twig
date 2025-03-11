@@ -197,13 +197,13 @@ widgets.twig - UI widgets</pre>
 
 	// Register templates
 	templates := map[string]string{
-		"self_ref.twig":      selfRefTemplate,
-		"scope.twig":         scopeTemplate,
-		"context.twig":       contextTemplate,
-		"library.twig":       libraryTemplate,
-		"use_library.twig":   useLibraryTemplate,
-		"from_import.twig":   fromImportTemplate,
-		"optimization.twig":  optimizationTemplate,
+		"self_ref.twig":     selfRefTemplate,
+		"scope.twig":        scopeTemplate,
+		"context.twig":      contextTemplate,
+		"library.twig":      libraryTemplate,
+		"use_library.twig":  useLibraryTemplate,
+		"from_import.twig":  fromImportTemplate,
+		"optimization.twig": optimizationTemplate,
 	}
 
 	for name, content := range templates {
@@ -233,13 +233,13 @@ widgets.twig - UI widgets</pre>
 
 	for _, name := range []string{"self_ref.twig", "scope.twig", "context.twig", "use_library.twig", "from_import.twig", "optimization.twig"} {
 		fmt.Printf("\n----- %s -----\n\n", name)
-		
+
 		err := engine.RenderTo(os.Stdout, name, context)
 		if err != nil {
 			fmt.Printf("Error rendering template %s: %v\n", name, err)
 			continue
 		}
-		
+
 		fmt.Println("\n")
 	}
 }

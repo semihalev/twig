@@ -32,7 +32,7 @@ func WriteString(w io.Writer, s string) (int, error) {
 	if sw, ok := w.(io.StringWriter); ok {
 		return sw.WriteString(s)
 	}
-	
+
 	// Fallback path - reuse buffer from pool to avoid allocation
 	buf := GetByteBuffer()
 	buf.WriteString(s)

@@ -127,7 +127,7 @@ func main() {
 		}
 	}
 	directMacroTime := time.Since(startTime)
-	fmt.Printf("  %d iterations in %v (%.2f µs/op)\n", 
+	fmt.Printf("  %d iterations in %v (%.2f µs/op)\n",
 		iterations, directMacroTime, float64(directMacroTime.Nanoseconds())/float64(iterations)/1000.0)
 
 	// Benchmark imported macro usage
@@ -148,7 +148,7 @@ func main() {
 		}
 	}
 	importedMacroTime := time.Since(startTime)
-	fmt.Printf("  %d iterations in %v (%.2f µs/op)\n", 
+	fmt.Printf("  %d iterations in %v (%.2f µs/op)\n",
 		iterations, importedMacroTime, float64(importedMacroTime.Nanoseconds())/float64(iterations)/1000.0)
 
 	// Benchmark nested macro calls
@@ -169,7 +169,7 @@ func main() {
 		}
 	}
 	nestedMacroTime := time.Since(startTime)
-	fmt.Printf("  %d iterations in %v (%.2f µs/op)\n", 
+	fmt.Printf("  %d iterations in %v (%.2f µs/op)\n",
 		iterations, nestedMacroTime, float64(nestedMacroTime.Nanoseconds())/float64(iterations)/1000.0)
 
 	// Summary
@@ -179,7 +179,7 @@ func main() {
 	fmt.Printf("Direct macro usage:    %.2f µs/op\n", float64(directMacroTime.Nanoseconds())/float64(iterations)/1000.0)
 	fmt.Printf("Imported macro usage:  %.2f µs/op\n", float64(importedMacroTime.Nanoseconds())/float64(iterations)/1000.0)
 	fmt.Printf("Nested macro calls:    %.2f µs/op\n", float64(nestedMacroTime.Nanoseconds())/float64(iterations)/1000.0)
-	
+
 	fmt.Println("\nRelative Performance:")
 	fmt.Printf("Imported vs Direct:    %.2fx\n", float64(importedMacroTime.Nanoseconds())/float64(directMacroTime.Nanoseconds()))
 	fmt.Printf("Nested vs Direct:      %.2fx\n", float64(nestedMacroTime.Nanoseconds())/float64(directMacroTime.Nanoseconds()))

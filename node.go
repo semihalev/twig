@@ -749,7 +749,7 @@ func (n *ExtendsNode) Render(w io.Writer, ctx *RenderContext) error {
 	// This ensures the parent template knows it's being extended and preserves our blocks
 	parentCtx := NewRenderContext(ctx.env, ctx.context, ctx.engine)
 	parentCtx.extending = true // Flag that the parent is being extended
-	
+
 	// Ensure the context is released even if an error occurs
 	defer parentCtx.Release()
 
@@ -1030,7 +1030,7 @@ func (n *MacroNode) CallMacro(w io.Writer, ctx *RenderContext, args ...interface
 	// Create a new context for the macro
 	macroCtx := NewRenderContext(ctx.env, nil, ctx.engine)
 	macroCtx.parent = ctx
-	
+
 	// Ensure context is released even in error paths
 	defer macroCtx.Release()
 
@@ -1111,7 +1111,7 @@ func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// Create a new context for the imported template
 	importCtx := NewRenderContext(ctx.env, nil, ctx.engine)
-	
+
 	// Ensure context is released even in error paths
 	defer importCtx.Release()
 
@@ -1131,7 +1131,7 @@ func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// Set the module variable in the current context
 	ctx.SetVariable(n.module, macros)
-	
+
 	return nil
 }
 
@@ -1174,7 +1174,7 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// Create a new context for the imported template
 	importCtx := NewRenderContext(ctx.env, nil, ctx.engine)
-	
+
 	// Ensure context is released even in error paths
 	defer importCtx.Release()
 

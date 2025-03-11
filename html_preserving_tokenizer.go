@@ -30,7 +30,7 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 
 		// Use a single substring for all pattern searches to reduce allocations
 		remainingSource := p.source[currentPosition:]
-		
+
 		// Check for all possible tag starts, including whitespace control variants
 		positions := []struct {
 			pos     int
@@ -390,7 +390,7 @@ func tokenizeObjectContents(content string, tokens *[]Token, line int) {
 			commaCount++
 		}
 	}
-	
+
 	// Pre-grow the tokens slice: each key-value pair creates about 4 tokens on average
 	estimatedTokenCount := len(*tokens) + (commaCount+1)*4
 	if cap(*tokens) < estimatedTokenCount {
@@ -398,7 +398,7 @@ func tokenizeObjectContents(content string, tokens *[]Token, line int) {
 		copy(newTokens, *tokens)
 		*tokens = newTokens
 	}
-	
+
 	// State tracking
 	inSingleQuote := false
 	inDoubleQuote := false
@@ -419,13 +419,13 @@ func tokenizeObjectContents(content string, tokens *[]Token, line int) {
 				// Extract the key and value - reuse same slice memory
 				keyStr := content[start:colonPos]
 				keyStr = strings.TrimSpace(keyStr)
-				valueStr := content[colonPos+1:i]
+				valueStr := content[colonPos+1 : i]
 				valueStr = strings.TrimSpace(valueStr)
 
 				// Check key characteristics once to avoid multiple prefix/suffix checks
 				keyHasSingleQuotes := len(keyStr) >= 2 && keyStr[0] == '\'' && keyStr[len(keyStr)-1] == '\''
 				keyHasDoubleQuotes := len(keyStr) >= 2 && keyStr[0] == '"' && keyStr[len(keyStr)-1] == '"'
-				
+
 				// Process the key
 				if keyHasSingleQuotes || keyHasDoubleQuotes {
 					// Quoted key - add as a string token
@@ -449,7 +449,7 @@ func tokenizeObjectContents(content string, tokens *[]Token, line int) {
 				valueEndsWithBrace := len(valueStr) >= 1 && valueStr[len(valueStr)-1] == '}'
 				valueStartsWithBracket := len(valueStr) >= 2 && valueStr[0] == '['
 				valueEndsWithBracket := len(valueStr) >= 1 && valueStr[len(valueStr)-1] == ']'
-				
+
 				// Process the value - more complex values need special handling
 				if valueStartsWithBrace && valueEndsWithBrace {
 					// Nested object
@@ -610,7 +610,7 @@ func splitArrayElements(arrStr string) []string {
 	}
 	// Allocate with capacity for estimated number of elements
 	elements := make([]string, 0, commaCount+1)
-	
+
 	// Pre-allocate the string builder with a reasonable capacity
 	// to avoid frequent reallocations
 	var current strings.Builder
@@ -848,7 +848,7 @@ func (p *Parser) tokenizeAndAppend(source string, tokens *[]Token, line int) {
 // tokenizeExpression handles tokenizing expressions inside Twig tags
 func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 	// This is a tokenizer for expressions that handles Twig syntax properly
-	
+
 	// First, pre-grow the tokens slice to minimize reallocations
 	// Estimate: one token per 5 characters in the expression (rough average)
 	estimatedTokenCount := len(*tokens) + len(expr)/5 + 1
@@ -861,7 +861,7 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 	// Pre-allocate the string builder with a reasonable capacity
 	var currentToken strings.Builder
 	currentToken.Grow(16) // Reasonable size for most identifiers/numbers
-	
+
 	var inString bool
 	var stringDelimiter byte
 
@@ -883,7 +883,7 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 				if currentToken.Len() > 0 {
 					// Reuse the tokenValue to avoid extra allocations
 					tokenValue := currentToken.String()
-					
+
 					// Check if the token is a number
 					if onlyContainsDigitsOrDot(tokenValue) {
 						*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
@@ -943,21 +943,21 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 				nextChar := expr[i+1]
 				isTwoChar := false
 				var twoChar string
-				
+
 				// Avoiding string concatenation and using direct comparison
 				if (c == '=' && nextChar == '=') ||
-				   (c == '!' && nextChar == '=') ||
-				   (c == '>' && nextChar == '=') ||
-				   (c == '<' && nextChar == '=') ||
-				   (c == '&' && nextChar == '&') ||
-				   (c == '|' && nextChar == '|') ||
-				   (c == '?' && nextChar == '?') {
-					
+					(c == '!' && nextChar == '=') ||
+					(c == '>' && nextChar == '=') ||
+					(c == '<' && nextChar == '=') ||
+					(c == '&' && nextChar == '&') ||
+					(c == '|' && nextChar == '|') ||
+					(c == '?' && nextChar == '?') {
+
 					// Only allocate the string when we need it
 					twoChar = string([]byte{c, nextChar})
 					isTwoChar = true
 				}
-				
+
 				if isTwoChar {
 					*tokens = append(*tokens, Token{Type: TOKEN_OPERATOR, Value: twoChar, Line: line})
 					i++ // Skip the next character
@@ -1013,7 +1013,7 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 
 			// Pre-allocate for numeric tokens
 			currentToken.Grow(10) // Reasonable for most numbers
-			
+
 			// Handle negative sign if present
 			if c == '-' {
 				currentToken.WriteByte(c)
@@ -1052,7 +1052,7 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 	// Add any final token
 	if currentToken.Len() > 0 {
 		tokenValue := currentToken.String()
-		
+
 		// Check if the final token is a special keyword
 		// Use direct comparison instead of multiple string checks
 		if tokenValue == "true" || tokenValue == "false" ||
