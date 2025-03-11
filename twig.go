@@ -38,17 +38,17 @@ type Template struct {
 
 // Environment holds configuration and context for template rendering
 type Environment struct {
-	globals         map[string]interface{}
-	filters         map[string]FilterFunc
-	functions       map[string]FunctionFunc
-	tests           map[string]TestFunc
-	operators       map[string]OperatorFunc
-	extensions      []Extension
-	cache           bool
-	autoescape      bool
-	debug           bool
-	sandbox         bool
-	securityPolicy  SecurityPolicy  // Security policy for sandbox mode
+	globals        map[string]interface{}
+	filters        map[string]FilterFunc
+	functions      map[string]FunctionFunc
+	tests          map[string]TestFunc
+	operators      map[string]OperatorFunc
+	extensions     []Extension
+	cache          bool
+	autoescape     bool
+	debug          bool
+	sandbox        bool
+	securityPolicy SecurityPolicy // Security policy for sandbox mode
 }
 
 // New creates a new Twig engine instance

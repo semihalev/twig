@@ -830,22 +830,35 @@ func (n *IncludeNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// Create optimized context handling for includes
 
-	// Fast path: if no special handling needed, render with current context
-	if !n.only && len(n.variables) == 0 {
+	// Fast path: if no special handling needed and not sandboxed, render with current context
+	if !n.only && !n.sandboxed && len(n.variables) == 0 {
 		return template.nodes.Render(w, ctx)
 	}
 
 	// Need a new context for 'only' mode, sandboxed mode, or with variables
 	includeCtx := ctx
 	if n.only || n.sandboxed {
-		// Create minimal context with just what we need
-		includeCtx = NewRenderContext(ctx.env, make(map[string]interface{}, len(n.variables)), ctx.engine)
+		var contextVars map[string]interface{}
+
+		if n.only {
+			// Only mode - create empty context
+			contextVars = make(map[string]interface{}, len(n.variables))
+		} else {
+			// For sandboxed mode but not 'only' mode, copy the parent context
+			contextVars = make(map[string]interface{}, len(ctx.context)+len(n.variables))
+			for k, v := range ctx.context {
+				contextVars[k] = v
+			}
+		}
+
+		// Create a new context
+		includeCtx = NewRenderContext(ctx.env, contextVars, ctx.engine)
 		defer includeCtx.Release()
-		
+
 		// If sandboxed, enable sandbox mode
 		if n.sandboxed {
 			includeCtx.sandboxed = true
-			
+
 			// Check if a security policy is defined
 			if ctx.env.securityPolicy == nil {
 				return fmt.Errorf("cannot use sandboxed include without a security policy")

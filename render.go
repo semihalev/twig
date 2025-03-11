@@ -63,6 +63,7 @@ func NewRenderContext(env *Environment, context map[string]interface{}, engine *
 	ctx.currentBlock = nil
 	ctx.parent = nil
 	ctx.inParentCall = false
+	ctx.sandboxed = false
 
 	// Copy the context values
 	if context != nil {
@@ -229,29 +230,6 @@ func (ctx *RenderContext) SetParent(parent *RenderContext) {
 	ctx.parent = parent
 }
 
-// Clone creates a new RenderContext as a child of this one
-func (ctx *RenderContext) Clone() *RenderContext {
-	newCtx := NewRenderContext(ctx.env, make(map[string]interface{}), ctx.engine)
-	
-	// Inherit parent context
-	newCtx.parent = ctx
-	
-	// Inherit sandbox state
-	newCtx.sandboxed = ctx.sandboxed
-
-	// Copy all blocks 
-	for name, nodes := range ctx.blocks {
-		newCtx.blocks[name] = nodes
-	}
-
-	// Copy macros
-	for name, node := range ctx.macros {
-		newCtx.macros[name] = node
-	}
-
-	return newCtx
-}
-
 // EnableSandbox enables sandbox mode on this context
 func (ctx *RenderContext) EnableSandbox() {
 	ctx.sandboxed = true
@@ -260,6 +238,30 @@ func (ctx *RenderContext) EnableSandbox() {
 // IsSandboxed returns whether this context is sandboxed
 func (ctx *RenderContext) IsSandboxed() bool {
 	return ctx.sandboxed
+}
+
+// Clone creates a new context as a child of the current context
+func (ctx *RenderContext) Clone() *RenderContext {
+	// Create a new context
+	newCtx := NewRenderContext(ctx.env, make(map[string]interface{}), ctx.engine)
+
+	// Set parent relationship
+	newCtx.parent = ctx
+
+	// Inherit sandbox state
+	newCtx.sandboxed = ctx.sandboxed
+
+	// Copy blocks
+	for name, nodes := range ctx.blocks {
+		newCtx.blocks[name] = nodes
+	}
+
+	// Copy macros
+	for name, macro := range ctx.macros {
+		newCtx.macros[name] = macro
+	}
+
+	return newCtx
 }
 
 // GetMacro gets a macro from the context
@@ -535,7 +537,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		return nil, nil
 	}
 
-	// Handle sandbox security policy checks
+	// Check sandbox security if enabled
 	if ctx.sandboxed && ctx.env.securityPolicy != nil {
 		switch n := node.(type) {
 		case *FunctionNode:
@@ -634,12 +636,17 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		// Evaluate the condition
 		condResult, err := ctx.EvaluateExpression(n.condition)
 		if err != nil {
+			// Log error if debug is enabled
+			if IsDebugEnabled() {
+				LogError(err, "Error evaluating 'if' condition")
+			}
 			return nil, err
 		}
 
-		// Log for debugging when enabled
+		// Log result if debug is enabled
+		conditionResult := ctx.toBool(condResult)
 		if IsDebugEnabled() {
-			LogDebug("Ternary condition: %v (type: %T)", condResult, condResult)
+			LogDebug("Ternary condition result: %v (type: %T, raw value: %v)", conditionResult, condResult, condResult)
 			LogDebug("Branches: true=%T, false=%T", n.trueExpr, n.falseExpr)
 		}
 

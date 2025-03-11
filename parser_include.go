@@ -148,7 +148,7 @@ func (p *Parser) parseInclude(parser *Parser) (Node, error) {
 
 		case "only":
 			onlyContext = true
-			
+
 		case "sandboxed":
 			sandboxed = true
 
