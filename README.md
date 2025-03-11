@@ -1022,6 +1022,125 @@ Contributions are welcome! Here's how you can contribute:
 
 Please make sure your code passes all tests and follows the existing code style.
 
+## Security: Sandbox Mode
+
+Twig's sandbox mode provides a safe way to evaluate template code with restricted permissions. This is particularly useful when including templates from untrusted sources.
+
+### Basic Sandbox Usage
+
+```go
+// Create a new Twig engine
+engine := twig.New()
+
+// Create a security policy that restricts what functions and filters can be used
+policy := twig.NewDefaultSecurityPolicy()
+
+// Customize allowed functions and filters
+policy.AllowedFunctions["safe_function"] = true
+policy.AllowedFilters["safe_filter"] = true
+
+// Enable sandbox mode with the policy
+engine.EnableSandbox(policy)
+```
+
+### Sandboxed Includes
+
+The most common use for sandbox mode is including templates with restricted permissions:
+
+```twig
+{# Include a template in sandbox mode with restricted permissions #}
+{% include 'user_content.twig' sandboxed %}
+```
+
+When a template is included with the `sandboxed` option:
+1. The included template runs in a sandbox with the security policy
+2. Any functions or filters not explicitly allowed will fail
+3. The main template remains unaffected by the sandbox restrictions
+
+### Default Security Policy
+
+The `DefaultSecurityPolicy` provides sensible defaults:
+- Allows common, safe functions like `range`, `cycle`, `date`, etc.
+- Allows safe filters like `escape`, `upper`, `lower`, etc.
+- Allows basic control tags like `if`, `for`, `set`, etc.
+
+You can customize this policy by adding or removing items from:
+- `AllowedFunctions`: Map of allowed function names
+- `AllowedFilters`: Map of allowed filter names
+- `AllowedTags`: Map of allowed tag names
+
+## Parent Function
+
+The `parent()` function allows blocks in child templates to access and render the content of the same block from the parent template. This is useful for extending rather than completely replacing block content.
+
+```twig
+{# base.twig #}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{% block title %}Default Title{% endblock %}</title>
+</head>
+<body>
+    <header>{% block header %}Default Header{% endblock %}</header>
+    <main>{% block content %}Default Content{% endblock %}</main>
+    <footer>{% block footer %}Default Footer{% endblock %}</footer>
+</body>
+</html>
+
+{# child.twig #}
+{% extends "base.twig" %}
+
+{% block title %}Child Page - {{ parent() }}{% endblock %}
+
+{% block header %}
+    <h1>Child Header</h1>
+    {{ parent() }}
+{% endblock %}
+
+{% block content %}
+    <p>This is the child content that overrides the parent.</p>
+{% endblock %}
+```
+
+When rendered, the `child.twig` template will:
+- Render "Child Page - Default Title" as the title (combining its content with the parent's)
+- Output the child's header content followed by the parent's header content
+- Completely replace the parent's content block
+
+The `parent()` function is especially useful for:
+- Adding to inherited CSS or JavaScript blocks
+- Extending headers or footers without duplicating content
+- Building complex layout hierarchies
+
+## Whitespace Control
+
+Twig provides fine-grained control over whitespace in templates using the dash (`-`) modifier:
+
+```twig
+<div>
+    {{- value -}}   {# Trims whitespace before and after output #}
+</div>
+
+{# Output: <div>value</div> (no whitespace between the tags and value) #}
+```
+
+Whitespace control modifiers can be applied to any tag:
+
+- `{{- ... }}`: Removes whitespace before the output
+- `{{ ... -}}`: Removes whitespace after the output 
+- `{%- ... %}`: Removes whitespace before the block tag
+- `{% ... -%}`: Removes whitespace after the block tag
+
+This allows for clean, readable template code without producing unwanted whitespace in the output:
+
+```twig
+{% for item in items -%}
+    {{ item }}
+{%- endfor %}
+
+{# No whitespace between items #}
+```
+
 ## Roadmap
 
 ✅ Features already implemented:
@@ -1030,10 +1149,12 @@ Please make sure your code passes all tests and follows the existing code style.
 - Template inheritance and includes
 - Filters and functions
 - HTML escaping and safety
+- Sandbox mode for enhanced security
+- Whitespace control with dash modifiers
+- Parent function for block inheritance
 
 Future development plans include:
 
-- Expanded sandbox mode for enhanced security
 - Additional optimization techniques for macro evaluation
 - Template profiling tools for performance analysis
 - Additional loader types
