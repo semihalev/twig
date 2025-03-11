@@ -4,9 +4,11 @@ This directory contains benchmark tests for comparing the Twig template engine w
 
 ## Available Benchmarks
 
-1. **template_benchmark.go**: Basic benchmark comparing Twig with Go's standard html/template.
-2. **comprehensive_benchmark.go**: More detailed benchmark with various template complexities.
-3. **full_comparison.go**: Complete benchmark suite including other popular template engines.
+1. **simple_benchmark.go**: Basic benchmark comparing Twig with Go's standard html/template.
+2. **complex_comparison.go**: Comprehensive benchmark with various template complexities comparing multiple engines.
+3. **engine_comparison.go**: Simple comparison of multiple template engines.
+4. **macro_benchmark.go**: Special benchmark for testing macro functionality performance.
+5. **memory_benchmark.go**: Detailed memory usage comparison between Twig and Go's template.
 
 ## Running the Benchmarks
 
@@ -14,16 +16,19 @@ To run the benchmarks:
 
 ```bash
 # Basic benchmark
-go run template_benchmark.go
+go run simple_benchmark.go
 
-# Comprehensive benchmark
-go run comprehensive_benchmark.go 
+# Comprehensive comparison of multiple engines
+go run complex_comparison.go 
 
-# Complex compares benchmark
-go run complex_comparison.go
+# Simple engine comparison
+go run engine_comparison.go
 
-# For full benchmarks
-go run full_comparison.go
+# Macro performance benchmark
+go run macro_benchmark.go
+
+# Memory usage benchmark
+go run memory_benchmark.go
 ```
 
 ## Benchmark Methodology
@@ -38,6 +43,17 @@ We test with various template complexities:
 - Simple templates: Basic variable substitution
 - Medium templates: Conditionals and object properties
 - Complex templates: Loops, nested conditionals, and filters
+- Macro templates: Testing macro definition, calling, and importing
+
+## Key Findings
+
+1. Twig consistently outperforms other interpreted template engines
+2. Twig's performance advantage increases with template complexity
+3. Twig is significantly more memory-efficient than other engines
+4. Imported macros perform slightly better than direct macros
+5. Twig is up to 2.5x faster than Go's templates for complex templates
+
+For detailed results, see the [BENCHMARK_RESULTS.md](./BENCHMARK_RESULTS.md) file.
 
 ## Sample Results
 

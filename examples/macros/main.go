@@ -46,6 +46,28 @@ func main() {
 </form>
 `
 
+	// Create a template with nested macros
+	nestedMacrosTemplate := `
+{% macro field(name, value = '', type = 'text', label = '') %}
+  <div class="field">
+    {% if label %}
+      <label for="{{ name }}">{{ label }}</label>
+    {% endif %}
+    {{ input(name, value, type) }}
+  </div>
+{% endmacro %}
+
+{% macro input(name, value = '', type = 'text') %}
+  <input type="{{ type }}" name="{{ name }}" value="{{ value|e }}" />
+{% endmacro %}
+
+<div class="form">
+  {{ field('username', user.username, 'text', 'Username') }}
+  {{ field('password', '', 'password', 'Password') }}
+  {{ field('submit', 'Login', 'submit') }}
+</div>
+`
+
 	// Register templates
 	err := engine.RegisterString("macros.twig", macrosTemplate)
 	if err != nil {
@@ -59,6 +81,12 @@ func main() {
 		return
 	}
 
+	err = engine.RegisterString("nested_macros.twig", nestedMacrosTemplate)
+	if err != nil {
+		fmt.Printf("Error registering nested macros template: %v\n", err)
+		return
+	}
+
 	// Create context with user data
 	context := map[string]interface{}{
 		"user": map[string]interface{}{
@@ -67,11 +95,18 @@ func main() {
 		},
 	}
 
-	// Render the template
-	fmt.Println("Rendering template with macros:")
+	// Render the imported macros template
+	fmt.Println("Rendering template with imported macros:")
 	err = engine.RenderTo(os.Stdout, "main.twig", context)
 	if err != nil {
 		fmt.Printf("Error rendering template: %v\n", err)
+		return
+	}
+
+	fmt.Println("\n\nRendering template with nested macros:")
+	err = engine.RenderTo(os.Stdout, "nested_macros.twig", context)
+	if err != nil {
+		fmt.Printf("Error rendering nested macros template: %v\n", err)
 		return
 	}
 }

@@ -5,16 +5,27 @@
 </p>
 
 <p align="center">
-  <a href="https://goreportcard.com/report/github.com/semihalev/twig"><img src="https://goreportcard.com/badge/github.com/semihalev/twig?style=flat-square"></a>
-  <a href="http://godoc.org/github.com/semihalev/twig"><img src="https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square"></a>
-  <a href="https://github.com/semihalev/twig/releases"><img src="https://img.shields.io/github/v/release/semihalev/twig?style=flat-square"></a>
-  <a href="https://github.com/semihalev/twig/blob/master/LICENSE"><img src="https://img.shields.io/github/license/semihalev/twig?style=flat-square"></a>
+  <a href="https://goreportcard.com/report/github.com/semihalev/twig"><img src="https://goreportcard.com/badge/github.com/semihalev/twig?style=flat-square" alt="Go Report Card"></a>
+  <a href="https://pkg.go.dev/github.com/semihalev/twig"><img src="https://img.shields.io/badge/go.dev-reference-007d9c?style=flat-square" alt="go.dev reference"></a>
+  <a href="https://github.com/semihalev/twig/releases"><img src="https://img.shields.io/github/v/release/semihalev/twig?style=flat-square" alt="GitHub release"></a>
+  <a href="https://github.com/semihalev/twig/blob/master/LICENSE"><img src="https://img.shields.io/github/license/semihalev/twig?style=flat-square" alt="License"></a>
 </p>
 
 <p align="center">
   A fast, memory-efficient Twig template engine implementation for Go.<br>
   Provides full support for the Twig template language in a Go-native way.
 </p>
+
+Twig for Go is a comprehensive template engine that implements the Twig syntax popularized in PHP, but designed specifically for Go applications. It offers exceptional performance with minimal memory usage while providing a rich feature set including template inheritance, macros, filters, and more. Whether you're building a website, API responses, or any text generation system, Twig makes template management elegant and maintainable.
+
+## Why Choose Twig?
+
+- **Superior Performance**: Benchmarks show Twig is up to 2.5× faster than Go's standard template engine for complex templates
+- **Memory Efficiency**: Uses up to 8% less memory than standard Go templates while being 35% faster
+- **Powerful Features**: Template inheritance, macros, filters, and imports create a robust ecosystem for template reuse
+- **Developer Friendly**: Clean, readable syntax with clear error messages that help debug template issues
+- **Zero Dependencies**: No external Go dependencies means easy integration in any project
+- **Production Ready**: Template caching, compilation, and development mode provide flexibility for all environments
 
 ## Table of Contents
 
@@ -24,6 +35,7 @@
 - [Supported Twig Syntax](#supported-twig-syntax)
 - [Filter Support](#filter-support)
 - [Custom Filter and Function Registration](#custom-filter-and-function-registration)
+- [Macros and Reusability](#macros-and-reusability)
 - [Development Mode and Caching](#development-mode-and-caching)
 - [Debugging and Error Handling](#debugging-and-error-handling)
 - [String Escape Sequences](#string-escape-sequences)
@@ -44,7 +56,7 @@
 ## Features
 
 - Zero-allocation rendering where possible
-- Full Twig syntax support
+- Full Twig syntax support including macros, imports, and includes
 - Template inheritance
 - Extensible with filters, functions, tests, and operators
 - Multiple loader types (filesystem, in-memory, compiled)
@@ -114,6 +126,8 @@ func main() {
 - Functions: `{{ function(args) }}`
 - Template inheritance: `{% extends %}`, `{% block %}`
 - Includes: `{% include %}`
+- Macros: `{% macro name(args) %}...{% endmacro %}`
+- Imports: `{% import "template.twig" as alias %}`
 - Comments: `{# comment #}`
 - Array literals: `[1, 2, 3]`
 - Conditional expressions: `condition ? true_expr : false_expr`
@@ -273,6 +287,178 @@ engine.RegisterExtension("my_extension", func(ext *twig.CustomExtension) {
     }
 })
 ```
+
+## Macros and Reusability
+
+Twig macros are a powerful way to create reusable templates and components. They work like functions that can output template content.
+
+### Defining Macros
+
+Macros are defined using the `{% macro %}` tag:
+
+```twig
+{% macro input(name, value = '', type = 'text') %}
+    <input type="{{ type }}" name="{{ name }}" value="{{ value|e }}" />
+{% endmacro %}
+```
+
+### Using Macros
+
+Once defined, macros can be used directly in the same template:
+
+```twig
+{{ input('username', 'johndoe') }}
+{{ input('password', '', 'password') }}
+{{ input('submit', 'Login', 'submit') }}
+```
+
+### Macros with Default Parameters
+
+Macros can have default parameter values:
+
+```twig
+{% macro button(text, type = 'button', class = 'btn') %}
+    <button type="{{ type }}" class="{{ class }}">{{ text }}</button>
+{% endmacro %}
+
+{# Using with defaults #}
+{{ button('Click Me') }}
+
+{# Overriding defaults #}
+{{ button('Submit', 'submit', 'btn btn-primary') }}
+```
+
+### Importing Macros from Other Templates
+
+Macros can be defined in one template and imported into another:
+
+```twig
+{# In forms.twig #}
+{% macro input(name, value = '', type = 'text') %}
+    <input type="{{ type }}" name="{{ name }}" value="{{ value|e }}" />
+{% endmacro %}
+
+{# In template.twig #}
+{% import "forms.twig" as forms %}
+
+{{ forms.input('username') }}
+```
+
+### Nested Macros
+
+Macros can call other macros:
+
+```twig
+{% macro field(name, value = '', type = 'text', label = '') %}
+    <div class="field">
+        {% if label %}
+            <label for="{{ name }}">{{ label }}</label>
+        {% endif %}
+        {{ input(name, value, type) }}
+    </div>
+{% endmacro %}
+
+{% macro input(name, value = '', type = 'text') %}
+    <input type="{{ type }}" name="{{ name }}" value="{{ value|e }}" />
+{% endmacro %}
+
+{{ field('username', user.username, 'text', 'Username') }}
+```
+
+### Macro Variable Scope
+
+Macros have their own variable scope, separate from the template that calls them:
+
+```twig
+{% set name = 'Global' %}
+
+{% macro greet(name = 'Default') %}
+    {# This only sees the 'name' parameter, not the global 'name' #}
+    Hello, {{ name }}!
+{% endmacro %}
+
+{{ greet() }}                 {# Output: Hello, Default! #}
+{{ greet('Local') }}          {# Output: Hello, Local! #}
+{{ name }}                    {# Output: Global #}
+```
+
+To access the template's context from within a macro, pass the special `_context` variable:
+
+```twig
+{% macro listItems(items, _context) %}
+    {% for item in items %}
+        <li>{{ item }} (from {{ _context.templateName }})</li>
+    {% endfor %}
+{% endmacro %}
+
+{% set templateName = 'product-list' %}
+{{ listItems(products, _context) }}
+```
+
+### Self-Referencing with _self
+
+You can reference macros from the same template using the `_self` variable:
+
+```twig
+{% macro input(name, value) %}<input name="{{ name }}" value="{{ value }}">{% endmacro %}
+{% macro form(action) %}
+    <form action="{{ action }}">
+        {{ _self.input('username', '') }}
+        <button type="submit">Submit</button>
+    </form>
+{% endmacro %}
+
+{{ _self.form('/submit') }}
+```
+
+### Organizing Macro Libraries
+
+For larger applications, organize macros into component libraries:
+
+```twig
+{# components/forms.twig #}
+{% macro input(name, value = '') %}...{% endmacro %}
+{% macro textarea(name, value = '') %}...{% endmacro %}
+
+{# components/layout.twig #}
+{% macro card(title, content) %}...{% endmacro %}
+{% macro panel(title, content) %}...{% endmacro %}
+
+{# template.twig #}
+{% import "components/forms.twig" as forms %}
+{% import "components/layout.twig" as layout %}
+
+{{ layout.card('Login', forms.input('username')) }}
+```
+
+### Error Handling in Macros
+
+Common errors to watch for:
+
+1. **Undefined macros**: Ensure macros are defined before calling them
+2. **Parameter mismatches**: Check parameter names and types
+3. **Scope issues**: Remember macros can't access parent scope without explicitly passing context
+
+When debugging, enable debug mode to get detailed error messages:
+
+```go
+engine.SetDebug(true)
+```
+
+### Performance Considerations
+
+According to our benchmarks, imported macros perform 27% better than direct macro usage due to optimizations in the caching system:
+
+| Macro Usage Type | Time (µs/op) | Relative Performance |
+|------------------|--------------|----------------------|
+| Direct           | 3.16         | 1.00x                |
+| Imported         | 2.30         | 0.73x (27% faster)   |
+| Nested           | 2.98         | 0.94x (6% faster)    |
+
+For high-performance applications:
+- Prefer imported macros over direct macro usage
+- Group related macros in dedicated template files
+- Use the import cache efficiently by importing each macro file once
 
 ## Development Mode and Caching
 
@@ -435,17 +621,25 @@ Twig consistently outperforms other Go template engines, especially for complex 
 
 | Engine      | Simple (µs/op) | Medium (µs/op) | Complex (µs/op) |
 |-------------|----------------|----------------|-----------------|
-| Twig        | 0.42           | 0.65           | 0.24            |
-| Go Template | 0.94           | 0.90           | 7.80            |
-| Pongo2      | 0.86           | 0.90           | 4.46            |
-| Stick       | 3.84           | 15.77          | 54.72           |
+| Twig        | 0.47           | 0.35           | 3.21            |
+| Go Template | 0.91           | 0.93           | 8.04            |
+| Pongo2      | 0.87           | 0.90           | 4.74            |
+| Stick       | 3.90           | 15.43          | 53.17           |
 
 For complex templates, Twig is:
-- **33x faster** than Go's standard library
-- **19x faster** than Pongo2
-- **228x faster** than Stick
+- **2.5x faster** than Go's standard library
+- **1.5x faster** than Pongo2
+- **16.5x faster** than Stick
 
-Twig also uses approximately **33x less memory** than Go's standard library.
+Twig also uses approximately **8% less memory** than Go's standard library while being **35% faster**.
+
+### Macro Performance
+
+| Macro Usage Type | Time (µs/op) | Relative Performance |
+|------------------|--------------|----------------------|
+| Direct           | 3.16         | 1.00x                |
+| Imported         | 2.30         | 0.73x (27% faster)   |
+| Nested           | 2.98         | 0.94x (6% faster)    |
 
 See [full benchmark results](benchmark/BENCHMARK_RESULTS.md) for detailed comparison.
 
@@ -595,9 +789,75 @@ func main() {
 }
 ```
 
+### Macros Example
+
+Example showing how to use macros for reusable UI components:
+
+```go
+// From examples/macros/main.go
+package main
+
+import (
+    "fmt"
+    "github.com/semihalev/twig"
+    "os"
+)
+
+func main() {
+    // Create a new Twig engine
+    engine := twig.New()
+
+    // Create template with macros
+    macrosTemplate := `
+    {# Define macros in a separate template #}
+    {% macro input(name, value = '', type = 'text', size = 20) %}
+      <input type="{{ type }}" name="{{ name }}" value="{{ value|e }}" size="{{ size }}">
+    {% endmacro %}
+
+    {% macro label(text, for = '') %}
+      <label{% if for %} for="{{ for }}"{% endif %}>{{ text }}</label>
+    {% endmacro %}
+    `
+
+    // Create a template that imports and uses macros
+    mainTemplate := `
+    {% import "macros.twig" as forms %}
+
+    <form>
+      <div class="form-row">
+        {{ forms.label('Username', 'username') }}
+        {{ forms.input('username', user.username) }}
+      </div>
+      <div class="form-row">
+        {{ forms.input('submit', 'Submit', 'submit') }}
+      </div>
+    </form>
+    `
+
+    // Register templates
+    engine.RegisterString("macros.twig", macrosTemplate)
+    engine.RegisterString("main.twig", mainTemplate)
+
+    // Create context with user data
+    context := map[string]interface{}{
+        "user": map[string]interface{}{
+            "username": "johndoe",
+        },
+    }
+
+    // Render the template
+    err := engine.RenderTo(os.Stdout, "main.twig", context)
+    if err != nil {
+        fmt.Printf("Error rendering template: %v\n", err)
+    }
+}
+```
+
 More examples can be found in the `examples/` directory:
 - `examples/compiled_templates/` - Shows how to compile and use compiled templates
-- `examples/macros/` - Demonstrates the use of macros in templates
+- `examples/macros/` - Demonstrates the use of macros in templates with nested and imported examples
+- `examples/development_mode/` - Shows how to use the development mode for template auto-reloading
+- `examples/simple/` - Basic usage examples for quick reference
 
 ## Template Compilation
 
@@ -702,13 +962,23 @@ Please make sure your code passes all tests and follows the existing code style.
 
 ## Roadmap
 
+✅ Features already implemented:
+- Full macro functionality with imports
+- Comprehensive benchmarking including memory usage
+- Template inheritance and includes
+- Filters and functions
+- HTML escaping and safety
+
 Future development plans include:
 
 - Expanded sandbox mode for enhanced security
-- Additional optimization techniques
-- More comprehensive benchmarking
-- Template profiling tools
+- Additional optimization techniques for macro evaluation
+- Template profiling tools for performance analysis
 - Additional loader types
+- Enhanced from ... import syntax for selective macro imports
+- Support for lazy-loading templates
+- Test coverage improvements
+- Plugin system for third-party extensions
 
 ## Community & Support
 
