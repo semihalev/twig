@@ -749,6 +749,9 @@ func (n *ExtendsNode) Render(w io.Writer, ctx *RenderContext) error {
 	// This ensures the parent template knows it's being extended and preserves our blocks
 	parentCtx := NewRenderContext(ctx.env, ctx.context, ctx.engine)
 	parentCtx.extending = true // Flag that the parent is being extended
+	
+	// Ensure the context is released even if an error occurs
+	defer parentCtx.Release()
 
 	// Copy all block definitions from the child context to the parent context
 	for name, nodes := range ctx.blocks {
@@ -756,12 +759,7 @@ func (n *ExtendsNode) Render(w io.Writer, ctx *RenderContext) error {
 	}
 
 	// Render the parent template with the updated context
-	err = parentTemplate.nodes.Render(w, parentCtx)
-
-	// Clean up
-	parentCtx.Release()
-
-	return err
+	return parentTemplate.nodes.Render(w, parentCtx)
 }
 
 // IncludeNode represents an include directive
@@ -1032,6 +1030,9 @@ func (n *MacroNode) CallMacro(w io.Writer, ctx *RenderContext, args ...interface
 	// Create a new context for the macro
 	macroCtx := NewRenderContext(ctx.env, nil, ctx.engine)
 	macroCtx.parent = ctx
+	
+	// Ensure context is released even in error paths
+	defer macroCtx.Release()
 
 	// Set the parameters
 	for i, param := range n.params {
@@ -1042,7 +1043,6 @@ func (n *MacroNode) CallMacro(w io.Writer, ctx *RenderContext, args ...interface
 			// Otherwise, use the default value if available
 			value, err := ctx.EvaluateExpression(defaultVal)
 			if err != nil {
-				macroCtx.Release()
 				return err
 			}
 			macroCtx.SetVariable(param, value)
@@ -1059,21 +1059,17 @@ func (n *MacroNode) CallMacro(w io.Writer, ctx *RenderContext, args ...interface
 			// This TextNode contains variable references that need processing
 			err := renderVariableString(textNode.content, macroCtx, w)
 			if err != nil {
-				macroCtx.Release()
 				return err
 			}
 		} else {
 			// Standard rendering for other node types
 			err := node.Render(w, macroCtx)
 			if err != nil {
-				macroCtx.Release()
 				return err
 			}
 		}
 	}
 
-	// Release the context
-	macroCtx.Release()
 	return nil
 }
 
@@ -1115,11 +1111,13 @@ func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// Create a new context for the imported template
 	importCtx := NewRenderContext(ctx.env, nil, ctx.engine)
+	
+	// Ensure context is released even in error paths
+	defer importCtx.Release()
 
 	// Render the imported template to capture its macros
 	err = template.nodes.Render(io.Discard, importCtx)
 	if err != nil {
-		importCtx.Release()
 		return err
 	}
 
@@ -1133,9 +1131,7 @@ func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// Set the module variable in the current context
 	ctx.SetVariable(n.module, macros)
-
-	// Release the import context
-	importCtx.Release()
+	
 	return nil
 }
 
@@ -1178,11 +1174,13 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// Create a new context for the imported template
 	importCtx := NewRenderContext(ctx.env, nil, ctx.engine)
+	
+	// Ensure context is released even in error paths
+	defer importCtx.Release()
 
 	// Render the imported template to capture its macros
 	err = template.nodes.Render(io.Discard, importCtx)
 	if err != nil {
-		importCtx.Release()
 		return err
 	}
 
@@ -1197,7 +1195,6 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 		// Get the macro from the import context
 		macro, ok := importCtx.macros[macroName]
 		if !ok {
-			importCtx.Release()
 			return fmt.Errorf("macro '%s' not found in template '%s'", macroName, templateName)
 		}
 
@@ -1205,8 +1202,6 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 		ctx.macros[targetName] = macro
 	}
 
-	// Release the import context
-	importCtx.Release()
 	return nil
 }
 
