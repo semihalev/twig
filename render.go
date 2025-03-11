@@ -1088,19 +1088,35 @@ func (ctx *RenderContext) evaluateBinaryOp(operator string, left, right interfac
 		pattern := ctx.ToString(right)
 		str := ctx.ToString(left)
 
-		// Check for flags in the pattern - if it's wrapped in / /
+		// Check for flags in the pattern
 		caseInsensitive := false
-		if len(pattern) >= 3 && pattern[0] == '/' && pattern[len(pattern)-1] == '/' {
-			// Check for 'i' flag after the closing slash
-			if len(pattern) >= 4 && pattern[len(pattern)-2] == 'i' {
+		if len(pattern) >= 3 && pattern[0] == '/' {
+			// Check for /pattern/i format (i after the slash)
+			if len(pattern) >= 4 && pattern[len(pattern)-1] == 'i' && pattern[len(pattern)-2] == '/' {
 				caseInsensitive = true
-				// Remove the flags from the pattern
 				pattern = pattern[1 : len(pattern)-2]
-			} else {
-				// Remove just the slashes
-				pattern = pattern[1 : len(pattern)-1]
+			} else if pattern[len(pattern)-1] == '/' {
+				// Check for /pattern/i format (i before the slash)
+				if len(pattern) >= 4 && pattern[len(pattern)-2] == 'i' {
+					caseInsensitive = true
+					pattern = pattern[1 : len(pattern)-2]
+				} else {
+					// Regular /pattern/ without flags
+					pattern = pattern[1 : len(pattern)-1]
+				}
 			}
 		}
+
+		// Handle escaped character sequences
+		pattern = strings.ReplaceAll(pattern, "\\\\", "\\")
+		
+		// Special handling for regex character classes
+		// When working with backslashes in strings, we need 2 levels of escaping
+		// 1. In Go source, \d is written as \\d
+		// 2. After string processing, we need to handle it specially
+		pattern = strings.ReplaceAll(pattern, "\\d", "[0-9]") // digits
+		pattern = strings.ReplaceAll(pattern, "\\w", "[a-zA-Z0-9_]") // word chars
+		pattern = strings.ReplaceAll(pattern, "\\s", "[ \\t\\n\\r]") // whitespace
 
 		// Compile the regex with appropriate flags
 		var regex *regexp.Regexp
@@ -1115,7 +1131,12 @@ func (ctx *RenderContext) evaluateBinaryOp(operator string, left, right interfac
 			return false, fmt.Errorf("invalid regular expression: %s", err)
 		}
 
-		return regex.MatchString(str), nil
+		result := regex.MatchString(str)
+		// Add debug logging for the regex matches
+		if IsDebugEnabled() {
+			LogDebug("Regex match: pattern=%q, text=%q, result=%v", pattern, str, result)
+		}
+		return result, nil
 
 	case "starts with":
 		// String prefix check
