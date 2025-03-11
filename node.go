@@ -23,48 +23,27 @@ type Node interface {
 
 // NewRootNode creates a new root node
 func NewRootNode(children []Node, line int) *RootNode {
-	return &RootNode{
-		children: children,
-		line:     line,
-	}
+	return GetRootNode(children, line)
 }
 
 // NewTextNode creates a new text node
 func NewTextNode(content string, line int) *TextNode {
-	return &TextNode{
-		content: content,
-		line:    line,
-	}
+	return GetTextNode(content, line)
 }
 
 // NewPrintNode creates a new print node
 func NewPrintNode(expression Node, line int) *PrintNode {
-	return &PrintNode{
-		expression: expression,
-		line:       line,
-	}
+	return GetPrintNode(expression, line)
 }
 
 // NewIfNode creates a new if node
 func NewIfNode(conditions []Node, bodies [][]Node, elseBranch []Node, line int) *IfNode {
-	return &IfNode{
-		conditions: conditions,
-		bodies:     bodies,
-		elseBranch: elseBranch,
-		line:       line,
-	}
+	return GetIfNode(conditions, bodies, elseBranch, line)
 }
 
 // NewForNode creates a new for loop node
 func NewForNode(keyVar, valueVar string, sequence Node, body, elseBranch []Node, line int) *ForNode {
-	return &ForNode{
-		keyVar:     keyVar,
-		valueVar:   valueVar,
-		sequence:   sequence,
-		body:       body,
-		elseBranch: elseBranch,
-		line:       line,
-	}
+	return GetForNode(keyVar, valueVar, sequence, body, elseBranch, line)
 }
 
 // NewBlockNode creates a new block node
@@ -208,6 +187,11 @@ func (n *IfNode) Line() int {
 	return n.line
 }
 
+// Release returns the IfNode to the pool
+func (n *IfNode) Release() {
+	ReleaseIfNode(n)
+}
+
 // Render renders the if node
 func (n *IfNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Evaluate each condition until we find one that's true
@@ -283,6 +267,11 @@ func (n *ForNode) Type() NodeType {
 
 func (n *ForNode) Line() int {
 	return n.line
+}
+
+// Release returns the ForNode to the pool
+func (n *ForNode) Release() {
+	ReleaseForNode(n)
 }
 
 // Render renders the for loop node
@@ -1280,6 +1269,11 @@ func (n *RootNode) Render(w io.Writer, ctx *RenderContext) error {
 	return nil
 }
 
+// Release returns a RootNode to the pool
+func (n *RootNode) Release() {
+	ReleaseRootNode(n)
+}
+
 func (n *RootNode) Type() NodeType {
 	return NodeRoot
 }
@@ -1298,6 +1292,11 @@ func (n *TextNode) Render(w io.Writer, ctx *RenderContext) error {
 	// This preserves HTML flow and whitespace exactly as in the template
 	_, err := WriteString(w, n.content)
 	return err
+}
+
+// Release returns a TextNode to the pool
+func (n *TextNode) Release() {
+	ReleaseTextNode(n)
 }
 
 func (n *TextNode) Type() NodeType {
@@ -1362,4 +1361,9 @@ func (n *PrintNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Let user handle proper quoting in templates
 	_, err = WriteString(w, str)
 	return err
+}
+
+// Release returns a PrintNode to the pool
+func (n *PrintNode) Release() {
+	ReleasePrintNode(n)
 }

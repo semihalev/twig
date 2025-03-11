@@ -602,6 +602,18 @@ func (t *Template) RenderTo(w io.Writer, context map[string]interface{}) error {
 	// Ensure the context is returned to the pool
 	defer ctx.Release()
 
+	// Check if it's a RootNode that supports release
+	if rootNode, ok := t.nodes.(*RootNode); ok {
+		err := rootNode.Render(w, ctx)
+		// Don't release during rendering in case of extends nodes
+		// Only release when we're sure rendering is complete
+		if !ctx.extending {
+			defer rootNode.Release()
+		}
+		return err
+	}
+
+	// For other node types
 	return t.nodes.Render(w, ctx)
 }
 

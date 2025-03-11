@@ -158,26 +158,23 @@ func (n *LiteralNode) Render(w io.Writer, ctx *RenderContext) error {
 	return err
 }
 
+// Release returns a LiteralNode to the pool
+func (n *LiteralNode) Release() {
+	ReleaseLiteralNode(n)
+}
+
 // NewLiteralNode creates a new literal node
 func NewLiteralNode(value interface{}, line int) *LiteralNode {
-	return &LiteralNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprLiteral,
-			line:     line,
-		},
-		value: value,
-	}
+	node := GetLiteralNode(value, line)
+	node.ExpressionNode.exprType = ExprLiteral
+	return node
 }
 
 // NewVariableNode creates a new variable node
 func NewVariableNode(name string, line int) *VariableNode {
-	return &VariableNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprVariable,
-			line:     line,
-		},
-		name: name,
-	}
+	node := GetVariableNode(name, line)
+	node.ExpressionNode.exprType = ExprVariable
+	return node
 }
 
 // NewBinaryNode creates a new binary operation node
@@ -248,6 +245,11 @@ func (n *VariableNode) Render(w io.Writer, ctx *RenderContext) error {
 	str := ctx.ToString(value)
 	_, err = WriteString(w, str)
 	return err
+}
+
+// Release returns a VariableNode to the pool
+func (n *VariableNode) Release() {
+	ReleaseVariableNode(n)
 }
 
 // Render implementation for GetAttrNode

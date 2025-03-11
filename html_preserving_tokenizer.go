@@ -6,6 +6,24 @@ import (
 	"strings"
 )
 
+// createToken is a helper to create a token from the pool
+func createToken(tokenType int, value string, line int) Token {
+	// We return by value to avoid heap allocations for small/temporary tokens
+	// For tokens that get stored in slices, we'd use the pointer version
+	token := TokenPool.Get().(*Token)
+	token.Type = tokenType
+	token.Value = value
+	token.Line = line
+	
+	// Create a copy to return by value
+	result := *token
+	
+	// Return the original to the pool
+	TokenPool.Put(token)
+	
+	return result
+}
+
 // htmlPreservingTokenize is a replacement for the standard tokenize function
 // that properly preserves HTML content while correctly handling Twig syntax.
 // It treats everything outside of Twig tags as raw TEXT tokens.
@@ -13,7 +31,7 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 	// Pre-allocate tokens with estimated capacity based on source length
 	// This avoids frequent slice reallocations
 	estimatedTokenCount := len(p.source) / 20 // Rough estimate: one token per 20 chars
-	tokens := make([]Token, 0, estimatedTokenCount)
+	tokens := GetTokenSlice(estimatedTokenCount)
 	var currentPosition int
 	line := 1
 
@@ -63,12 +81,12 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 			// Add text up to the backslash (if any)
 			if nextTagPos-1 > currentPosition {
 				preText := p.source[currentPosition : nextTagPos-1]
-				tokens = append(tokens, Token{Type: TOKEN_TEXT, Value: preText, Line: line})
+				tokens = append(tokens, createToken(TOKEN_TEXT, preText, line))
 				line += strings.Count(preText, "\n")
 			}
 
 			// Add the tag itself as literal text (without the backslash)
-			tokens = append(tokens, Token{Type: TOKEN_TEXT, Value: matchedPos.pattern, Line: line})
+			tokens = append(tokens, createToken(TOKEN_TEXT, matchedPos.pattern, line))
 
 			// Move past the tag
 			currentPosition = nextTagPos + matchedPos.length
@@ -80,7 +98,7 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 			content := p.source[currentPosition:]
 			if len(content) > 0 {
 				line += strings.Count(content, "\n")
-				tokens = append(tokens, Token{Type: TOKEN_TEXT, Value: content, Line: line})
+				tokens = append(tokens, createToken(TOKEN_TEXT, content, line))
 			}
 			break
 		}
@@ -89,11 +107,11 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 		if nextTagPos > currentPosition {
 			content := p.source[currentPosition:nextTagPos]
 			line += strings.Count(content, "\n")
-			tokens = append(tokens, Token{Type: TOKEN_TEXT, Value: content, Line: line})
+			tokens = append(tokens, createToken(TOKEN_TEXT, content, line))
 		}
 
 		// Add the tag start token
-		tokens = append(tokens, Token{Type: tagType, Line: line})
+		tokens = append(tokens, createToken(tagType, "", line))
 
 		// Determine tag length and move past the opening
 		tagLength := 2 // Default for "{{", "{%", "{#"
@@ -164,7 +182,7 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 		if tagType == TOKEN_COMMENT_START {
 			// For comments, just store the content as a TEXT token
 			if len(tagContent) > 0 {
-				tokens = append(tokens, Token{Type: TOKEN_TEXT, Value: tagContent, Line: line})
+				tokens = append(tokens, createToken(TOKEN_TEXT, tagContent, line))
 			}
 		} else {
 			// For variable and block tags, tokenize the content properly
@@ -177,7 +195,7 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 				parts := strings.SplitN(tagContent, " ", 2)
 				if len(parts) > 0 {
 					blockName := parts[0]
-					tokens = append(tokens, Token{Type: TOKEN_NAME, Value: blockName, Line: line})
+					tokens = append(tokens, createToken(TOKEN_NAME, blockName, line))
 
 					// Different handling based on block type
 					if blockName == "if" || blockName == "elseif" {
@@ -207,17 +225,17 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 										valueVar := strings.TrimSpace(iterParts[1])
 
 										// Add tokens for key and value variables
-										tokens = append(tokens, Token{Type: TOKEN_NAME, Value: keyVar, Line: line})
-										tokens = append(tokens, Token{Type: TOKEN_PUNCTUATION, Value: ",", Line: line})
-										tokens = append(tokens, Token{Type: TOKEN_NAME, Value: valueVar, Line: line})
+										tokens = append(tokens, createToken(TOKEN_NAME, keyVar, line))
+										tokens = append(tokens, createToken(TOKEN_PUNCTUATION, ",", line))
+										tokens = append(tokens, createToken(TOKEN_NAME, valueVar, line))
 									}
 								} else {
 									// Single iterator variable
-									tokens = append(tokens, Token{Type: TOKEN_NAME, Value: iterators, Line: line})
+									tokens = append(tokens, createToken(TOKEN_NAME, iterators, line))
 								}
 
 								// Add "in" keyword
-								tokens = append(tokens, Token{Type: TOKEN_NAME, Value: "in", Line: line})
+								tokens = append(tokens, createToken(TOKEN_NAME, "in", line))
 
 								// Check if collection is a function call (contains ( and ))
 								if strings.Contains(collection, "(") && strings.Contains(collection, ")") {
@@ -225,11 +243,11 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 									p.tokenizeExpression(collection, &tokens, line)
 								} else {
 									// Add collection as a simple variable
-									tokens = append(tokens, Token{Type: TOKEN_NAME, Value: collection, Line: line})
+									tokens = append(tokens, createToken(TOKEN_NAME, collection, line))
 								}
 							} else {
 								// Fallback if "in" keyword not found
-								tokens = append(tokens, Token{Type: TOKEN_NAME, Value: forExpr, Line: line})
+								tokens = append(tokens, createToken(TOKEN_NAME, forExpr, line))
 							}
 						}
 					} else if blockName == "include" {
@@ -251,24 +269,24 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 									// Extract the template name without quotes
 									templateName := templatePart[1 : len(templatePart)-1]
 									// Add as a string token
-									tokens = append(tokens, Token{Type: TOKEN_STRING, Value: templateName, Line: line})
+									tokens = append(tokens, createToken(TOKEN_STRING, templateName, line))
 								} else {
 									// Unquoted name, add as name token
-									tokens = append(tokens, Token{Type: TOKEN_NAME, Value: templatePart, Line: line})
+									tokens = append(tokens, createToken(TOKEN_NAME, templatePart, line))
 								}
 
 								// Add "with" keyword
-								tokens = append(tokens, Token{Type: TOKEN_NAME, Value: "with", Line: line})
+								tokens = append(tokens, createToken(TOKEN_NAME, "with", line))
 
 								// Add opening brace for the parameters
-								tokens = append(tokens, Token{Type: TOKEN_PUNCTUATION, Value: "{", Line: line})
+								tokens = append(tokens, createToken(TOKEN_PUNCTUATION, "{", line))
 
 								// For parameters that might include nested objects, we need a different approach
 								// Tokenize the parameter string, preserving nested structures
 								tokenizeComplexObject(paramsPart, &tokens, line)
 
 								// Add closing brace
-								tokens = append(tokens, Token{Type: TOKEN_PUNCTUATION, Value: "}", Line: line})
+								tokens = append(tokens, createToken(TOKEN_PUNCTUATION, "}", line))
 							} else {
 								// No 'with' keyword, just a template name
 								if (strings.HasPrefix(includeExpr, "\"") && strings.HasSuffix(includeExpr, "\"")) ||
@@ -276,10 +294,10 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 									// Extract template name without quotes
 									templateName := includeExpr[1 : len(includeExpr)-1]
 									// Add as a string token
-									tokens = append(tokens, Token{Type: TOKEN_STRING, Value: templateName, Line: line})
+									tokens = append(tokens, createToken(TOKEN_STRING, templateName, line))
 								} else {
 									// Not quoted, add as name token
-									tokens = append(tokens, Token{Type: TOKEN_NAME, Value: includeExpr, Line: line})
+									tokens = append(tokens, createToken(TOKEN_NAME, includeExpr, line))
 								}
 							}
 						}
@@ -294,7 +312,7 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 								// Extract the template name without quotes
 								templateName := extendsExpr[1 : len(extendsExpr)-1]
 								// Add as a string token
-								tokens = append(tokens, Token{Type: TOKEN_STRING, Value: templateName, Line: line})
+								tokens = append(tokens, createToken(TOKEN_STRING, templateName, line))
 							} else {
 								// Not quoted, tokenize as a normal expression
 								p.tokenizeExpression(extendsExpr, &tokens, line)
@@ -314,22 +332,22 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 								value := strings.TrimSpace(setExpr[assignPos+1:])
 
 								// Add the variable name token
-								tokens = append(tokens, Token{Type: TOKEN_NAME, Value: varName, Line: line})
+								tokens = append(tokens, createToken(TOKEN_NAME, varName, line))
 
 								// Add the assignment operator
-								tokens = append(tokens, Token{Type: TOKEN_OPERATOR, Value: "=", Line: line})
+								tokens = append(tokens, createToken(TOKEN_OPERATOR, "=", line))
 
 								// Tokenize the value expression
 								p.tokenizeExpression(value, &tokens, line)
 							} else {
 								// Handle case without assignment (e.g., {% set var %})
-								tokens = append(tokens, Token{Type: TOKEN_NAME, Value: setExpr, Line: line})
+								tokens = append(tokens, createToken(TOKEN_NAME, setExpr, line))
 							}
 						}
 					} else {
 						// For other block types, just add parameters as NAME tokens
 						if len(parts) > 1 {
-							tokens = append(tokens, Token{Type: TOKEN_NAME, Value: parts[1], Line: line})
+							tokens = append(tokens, createToken(TOKEN_NAME, parts[1], line))
 						}
 					}
 				}
@@ -338,7 +356,7 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 				if len(tagContent) > 0 {
 					// If it's a simple variable name, add it directly
 					if !strings.ContainsAny(tagContent, ".|[](){}\"',+-*/=!<>%&^~") {
-						tokens = append(tokens, Token{Type: TOKEN_NAME, Value: tagContent, Line: line})
+						tokens = append(tokens, createToken(TOKEN_NAME, tagContent, line))
 					} else {
 						// For complex expressions, tokenize properly
 						p.tokenizeExpression(tagContent, &tokens, line)
@@ -348,14 +366,14 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 		}
 
 		// Add the end tag token
-		tokens = append(tokens, Token{Type: endTagType, Line: line})
+		tokens = append(tokens, createToken(endTagType, "", line))
 
 		// Move past the end tag
 		currentPosition = currentPosition + endPos + endTagLength
 	}
 
 	// Add EOF token
-	tokens = append(tokens, Token{Type: TOKEN_EOF, Line: line})
+	tokens = append(tokens, createToken(TOKEN_EOF, "", line))
 	return tokens, nil
 }
 
@@ -436,11 +454,11 @@ func tokenizeObjectContents(content string, tokens *[]Token, line int) {
 					})
 				} else {
 					// Unquoted key
-					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: keyStr, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NAME, keyStr, line))
 				}
 
 				// Add colon separator - using static string to avoid allocation
-				*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: ":", Line: line})
+				*tokens = append(*tokens, createToken(TOKEN_PUNCTUATION, ":", line))
 
 				// Check value characteristics once
 				valueHasSingleQuotes := len(valueStr) >= 2 && valueStr[0] == '\'' && valueStr[len(valueStr)-1] == '\''
@@ -453,15 +471,15 @@ func tokenizeObjectContents(content string, tokens *[]Token, line int) {
 				// Process the value - more complex values need special handling
 				if valueStartsWithBrace && valueEndsWithBrace {
 					// Nested object
-					*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "{", Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_PUNCTUATION, "{", line))
 					// Pass substring directly to avoid another allocation
 					tokenizeObjectContents(valueStr[1:len(valueStr)-1], tokens, line)
-					*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "}", Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_PUNCTUATION, "}", line))
 				} else if valueStartsWithBracket && valueEndsWithBracket {
 					// Array
-					*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "[", Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_PUNCTUATION, "[", line))
 					tokenizeArrayElements(valueStr[1:len(valueStr)-1], tokens, line)
-					*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "]", Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_PUNCTUATION, "]", line))
 				} else if valueHasSingleQuotes || valueHasDoubleQuotes {
 					// String literal - reuse memory by slicing
 					*tokens = append(*tokens, Token{
@@ -471,16 +489,16 @@ func tokenizeObjectContents(content string, tokens *[]Token, line int) {
 					})
 				} else if isNumericValue(valueStr) {
 					// Numeric value
-					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: valueStr, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NUMBER, valueStr, line))
 				} else if valueStr == "true" || valueStr == "false" {
 					// Boolean literal
-					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: valueStr, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NAME, valueStr, line))
 				} else if valueStr == "null" || valueStr == "nil" {
 					// Null/nil literal
-					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: valueStr, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NAME, valueStr, line))
 				} else {
 					// Variable or other value
-					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: valueStr, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NAME, valueStr, line))
 				}
 
 				// Add comma if needed - using static string to avoid allocation
@@ -561,15 +579,15 @@ func tokenizeArrayElements(arrStr string, tokens *[]Token, line int) {
 
 		if firstChar == '{' && lastChar == '}' {
 			// Nested object
-			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "{", Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_PUNCTUATION, "{", line))
 			// Pass substring directly to avoid another allocation
 			tokenizeObjectContents(element[1:len(element)-1], tokens, line)
-			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "}", Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_PUNCTUATION, "}", line))
 		} else if firstChar == '[' && lastChar == ']' {
 			// Nested array
-			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "[", Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_PUNCTUATION, "[", line))
 			tokenizeArrayElements(element[1:len(element)-1], tokens, line)
-			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: "]", Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_PUNCTUATION, "]", line))
 		} else if (firstChar == '\'' && lastChar == '\'') ||
 			(firstChar == '"' && lastChar == '"') {
 			// String literal - reuse memory by slicing rather than copying
@@ -580,16 +598,16 @@ func tokenizeArrayElements(arrStr string, tokens *[]Token, line int) {
 			})
 		} else if isNumericValue(element) {
 			// Numeric value
-			*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: element, Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_NUMBER, element, line))
 		} else if element == "true" || element == "false" {
 			// Boolean literal
-			*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: element, Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_NAME, element, line))
 		} else if element == "null" || element == "nil" {
 			// Null/nil literal
-			*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: element, Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_NAME, element, line))
 		} else {
 			// Variable or other value
-			*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: element, Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_NAME, element, line))
 		}
 
 		// Add comma between elements (except last)
@@ -840,7 +858,7 @@ func extractParams(paramStr string) []Param {
 func (p *Parser) tokenizeAndAppend(source string, tokens *[]Token, line int) {
 	// Use a simplified approach - just add the expression as a name token
 	// The parser will handle the include parameters later
-	*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: source, Line: line})
+	*tokens = append(*tokens, createToken(TOKEN_NAME, source, line))
 }
 
 // These helper functions (isDigit, isOperator, isPunctuation, isWhitespace) are defined in parser.go
@@ -873,7 +891,7 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 			if inString && c == stringDelimiter {
 				// End of string
 				inString = false
-				*tokens = append(*tokens, Token{Type: TOKEN_STRING, Value: currentToken.String(), Line: line})
+				*tokens = append(*tokens, createToken(TOKEN_STRING, currentToken.String(), line))
 				currentToken.Reset()
 			} else if !inString {
 				// Start of string
@@ -886,9 +904,9 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 
 					// Check if the token is a number
 					if onlyContainsDigitsOrDot(tokenValue) {
-						*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
+						*tokens = append(*tokens, createToken(TOKEN_NUMBER, tokenValue, line))
 					} else {
-						*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
+						*tokens = append(*tokens, createToken(TOKEN_NAME, tokenValue, line))
 					}
 					currentToken.Reset()
 				}
@@ -912,15 +930,15 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 				tokenValue := currentToken.String()
 				// Check if the token is a number
 				if onlyContainsDigitsOrDot(tokenValue) {
-					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NUMBER, tokenValue, line))
 				} else {
-					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NAME, tokenValue, line))
 				}
 				currentToken.Reset()
 			}
 
-			// Add the colon token - reuse static string to avoid allocation
-			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: ":", Line: line})
+			// Add the colon token
+			*tokens = append(*tokens, createToken(TOKEN_PUNCTUATION, ":", line))
 			continue
 		}
 
@@ -931,9 +949,9 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 				tokenValue := currentToken.String()
 				// Check if the token is a number
 				if onlyContainsDigitsOrDot(tokenValue) {
-					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NUMBER, tokenValue, line))
 				} else {
-					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NAME, tokenValue, line))
 				}
 				currentToken.Reset()
 			}
@@ -959,14 +977,14 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 				}
 
 				if isTwoChar {
-					*tokens = append(*tokens, Token{Type: TOKEN_OPERATOR, Value: twoChar, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_OPERATOR, twoChar, line))
 					i++ // Skip the next character
 					continue
 				}
 			}
 
 			// Add the single-character operator token
-			*tokens = append(*tokens, Token{Type: TOKEN_OPERATOR, Value: string([]byte{c}), Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_OPERATOR, string([]byte{c}), line))
 			continue
 		}
 
@@ -977,15 +995,15 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 				tokenValue := currentToken.String()
 				// Check if the token is a number
 				if onlyContainsDigitsOrDot(tokenValue) {
-					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NUMBER, tokenValue, line))
 				} else {
-					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NAME, tokenValue, line))
 				}
 				currentToken.Reset()
 			}
 
-			// Add the punctuation token - reuse static chars to reduce allocations
-			*tokens = append(*tokens, Token{Type: TOKEN_PUNCTUATION, Value: string([]byte{c}), Line: line})
+			// Add the punctuation token
+			*tokens = append(*tokens, createToken(TOKEN_PUNCTUATION, string([]byte{c}), line))
 			continue
 		}
 
@@ -996,9 +1014,9 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 				tokenValue := currentToken.String()
 				// Check if the token is a number
 				if onlyContainsDigitsOrDot(tokenValue) {
-					*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NUMBER, tokenValue, line))
 				} else {
-					*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
+					*tokens = append(*tokens, createToken(TOKEN_NAME, tokenValue, line))
 				}
 				currentToken.Reset()
 			}
@@ -1040,7 +1058,7 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 			}
 			i-- // Adjust for the outer loop increment
 
-			*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: currentToken.String(), Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_NUMBER, currentToken.String(), line))
 			currentToken.Reset()
 			continue
 		}
@@ -1058,13 +1076,13 @@ func (p *Parser) tokenizeExpression(expr string, tokens *[]Token, line int) {
 		if tokenValue == "true" || tokenValue == "false" ||
 			tokenValue == "null" || tokenValue == "nil" {
 			// These are literals, not names
-			*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_NAME, tokenValue, line))
 		} else if onlyContainsDigitsOrDot(tokenValue) {
 			// It's a number
-			*tokens = append(*tokens, Token{Type: TOKEN_NUMBER, Value: tokenValue, Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_NUMBER, tokenValue, line))
 		} else {
 			// Regular name token
-			*tokens = append(*tokens, Token{Type: TOKEN_NAME, Value: tokenValue, Line: line})
+			*tokens = append(*tokens, createToken(TOKEN_NAME, tokenValue, line))
 		}
 	}
 }

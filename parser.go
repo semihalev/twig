@@ -76,9 +76,14 @@ func (p *Parser) Parse(source string) (Node, error) {
 	// Parse tokens into nodes
 	nodes, err := p.parseOuterTemplate()
 	if err != nil {
+		// Clean up token slice on error
+		ReleaseTokenSlice(p.tokens)
 		return nil, fmt.Errorf("parsing error: %w", err)
 	}
 
+	// Clean up token slice after successful parsing
+	ReleaseTokenSlice(p.tokens)
+	
 	return NewRootNode(nodes, 1), nil
 }
 
