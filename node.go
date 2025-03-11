@@ -1169,10 +1169,18 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 	return nil
 }
 
-// VerbatimNode represents a raw/verbatim block
+// VerbatimNode represents a raw/verbatim block that passes content through without processing Twig tags
 type VerbatimNode struct {
 	content string
 	line    int
+}
+
+// NewVerbatimNode creates a new verbatim node
+func NewVerbatimNode(content string, line int) *VerbatimNode {
+	return &VerbatimNode{
+		content: content,
+		line:    line,
+	}
 }
 
 func (n *VerbatimNode) Type() NodeType {
@@ -1181,6 +1189,13 @@ func (n *VerbatimNode) Type() NodeType {
 
 func (n *VerbatimNode) Line() int {
 	return n.line
+}
+
+// Render renders the verbatim node (outputs raw content without processing)
+func (n *VerbatimNode) Render(w io.Writer, ctx *RenderContext) error {
+	// Output the content as-is without any processing
+	_, err := WriteString(w, n.content)
+	return err
 }
 
 // ElementNode represents an HTML element
