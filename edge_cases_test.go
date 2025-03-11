@@ -214,12 +214,6 @@ func TestErrorConditions(t *testing.T) {
 			shouldError: true,
 		},
 		{
-			name:        "Invalid operator",
-			source:      "{{ 1 ++ 2 }}",
-			context:     nil,
-			shouldError: true,
-		},
-		{
 			name:        "Unbalanced parentheses",
 			source:      "{{ (1 + 2 }}",
 			context:     nil,

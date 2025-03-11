@@ -101,6 +101,7 @@ func (e *CoreExtension) GetFilters() map[string]FilterFunc {
 		"abs":           e.filterAbs,
 		"round":         e.filterRound,
 		"nl2br":         e.filterNl2Br,
+		"format":        e.filterFormat,
 	}
 }
 
@@ -1448,6 +1449,9 @@ func (e *CoreExtension) filterSlice(value interface{}, args ...interface{}) (int
 
 		// Handle negative start index
 		if start < 0 {
+			// In Twig, negative start means count from the end of the string
+			// For example, -5 means "the last 5 characters"
+			// So we convert it to a positive index directly
 			start = runeCount + start
 		}
 
@@ -1465,6 +1469,12 @@ func (e *CoreExtension) filterSlice(value interface{}, args ...interface{}) (int
 			end = start + length
 			if end > runeCount {
 				end = runeCount
+			}
+		} else if length < 0 {
+			// Negative length means count from the end
+			end = runeCount + length
+			if end < start {
+				end = start
 			}
 		}
 
@@ -1491,6 +1501,12 @@ func (e *CoreExtension) filterSlice(value interface{}, args ...interface{}) (int
 			end = start + length
 			if end > count {
 				end = count
+			}
+		} else if length < 0 {
+			// Negative length means count from the end
+			end = count + length
+			if end < start {
+				end = start
 			}
 		}
 
@@ -1525,6 +1541,12 @@ func (e *CoreExtension) filterSlice(value interface{}, args ...interface{}) (int
 			if end > runeCount {
 				end = runeCount
 			}
+		} else if length < 0 {
+			// Negative length means count from the end
+			end = runeCount + length
+			if end < start {
+				end = start
+			}
 		}
 
 		return string(runes[start:end]), nil
@@ -1550,6 +1572,12 @@ func (e *CoreExtension) filterSlice(value interface{}, args ...interface{}) (int
 			end = start + length
 			if end > count {
 				end = count
+			}
+		} else if length < 0 {
+			// Negative length means count from the end
+			end = count + length
+			if end < start {
+				end = start
 			}
 		}
 
@@ -2086,4 +2114,17 @@ func (e *CoreExtension) functionMerge(args ...interface{}) (interface{}, error) 
 
 func escapeHTML(s string) string {
 	return html.EscapeString(s)
+}
+
+// filterFormat implements the format filter similar to fmt.Sprintf
+func (e *CoreExtension) filterFormat(value interface{}, args ...interface{}) (interface{}, error) {
+	formatString := toString(value)
+	
+	// If no args, just return the string
+	if len(args) == 0 {
+		return formatString, nil
+	}
+	
+	// Apply formatting
+	return fmt.Sprintf(formatString, args...), nil
 }
