@@ -57,13 +57,13 @@ func TestAdvancedComparisonOperators(t *testing.T) {
 		// Matches operator (regex)
 		{
 			name:     "Matches operator - true case",
-			source:   "{% if 'abc123' matches '/^[a-z]+\\d+$/' %}true{% else %}false{% endif %}",
+			source:   "{% if 'abc123' matches '/^[a-z]+[0-9]+$/' %}true{% else %}false{% endif %}",
 			context:  nil,
 			expected: "true",
 		},
 		{
 			name:     "Matches operator - false case",
-			source:   "{% if '123abc' matches '/^[a-z]+\\d+$/' %}true{% else %}false{% endif %}",
+			source:   "{% if '123abc' matches '/^[a-z]+[0-9]+$/' %}true{% else %}false{% endif %}",
 			context:  nil,
 			expected: "false",
 		},
@@ -76,7 +76,7 @@ func TestAdvancedComparisonOperators(t *testing.T) {
 		{
 			name:     "Matches operator with variables",
 			source:   "{% if text matches pattern %}true{% else %}false{% endif %}",
-			context:  map[string]interface{}{"text": "abc123", "pattern": "/^[a-z]+\\d+$/"},
+			context:  map[string]interface{}{"text": "abc123", "pattern": "/^[a-z]+[0-9]+$/"},
 			expected: "true",
 		},
 
