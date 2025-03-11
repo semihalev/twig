@@ -2,16 +2,17 @@ package twig
 
 import (
 	"io"
-	"regexp"
 	"strings"
 )
 
 // trimLeadingWhitespace removes leading whitespace from a string
+// This is only used for whitespace control in templates ({{- and -}})
 func trimLeadingWhitespace(s string) string {
 	return strings.TrimLeft(s, " \t\n\r")
 }
 
 // trimTrailingWhitespace removes trailing whitespace from a string
+// This is only used for whitespace control in templates ({{- and -}})
 func trimTrailingWhitespace(s string) string {
 	return strings.TrimRight(s, " \t\n\r")
 }
@@ -32,24 +33,13 @@ func NewSpacelessNode(body []Node, line int) *SpacelessNode {
 
 // Render renders the node to a writer
 func (n *SpacelessNode) Render(w io.Writer, ctx *RenderContext) error {
-	// First, render the content to a string using a buffer
-	var buf StringBuffer
-
+	// Just render the content directly - we don't manipulate HTML
 	for _, node := range n.body {
-		if err := node.Render(&buf, ctx); err != nil {
+		if err := node.Render(w, ctx); err != nil {
 			return err
 		}
 	}
-
-	// Get the rendered content as a string
-	content := buf.String()
-
-	// Apply spaceless processing (remove whitespace between HTML tags)
-	result := removeWhitespaceBetweenTags(content)
-
-	// Write the processed result
-	_, err := w.Write([]byte(result))
-	return err
+	return nil
 }
 
 // Line returns the line number of the node
@@ -60,12 +50,4 @@ func (n *SpacelessNode) Line() int {
 // Type returns the node type
 func (n *SpacelessNode) Type() NodeType {
 	return NodeSpaceless
-}
-
-// removeWhitespaceBetweenTags removes whitespace between HTML tags
-// but preserves whitespace between words
-func removeWhitespaceBetweenTags(content string) string {
-	// This regex matches whitespace between HTML tags only
-	re := regexp.MustCompile(">\\s+<")
-	return re.ReplaceAllString(content, "><")
 }

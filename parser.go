@@ -59,24 +59,22 @@ func (p *Parser) Parse(source string) (Node, error) {
 	// Initialize default block handlers
 	p.initBlockHandlers()
 
-	// Tokenize source
+	// Use the HTML-preserving tokenizer to preserve HTML content exactly
+	// This will treat everything outside twig tags as TEXT tokens
 	var err error
-	p.tokens, err = p.tokenize()
+	p.tokens, err = p.htmlPreservingTokenize()
 	if err != nil {
 		return nil, fmt.Errorf("tokenization error: %w", err)
 	}
 
-	// Debug tokenization output
-	/*
-		fmt.Println("Tokenized template:")
-		for i, t := range p.tokens {
-			fmt.Printf("Token %d: Type=%d, Value=%q, Line=%d\n", i, t.Type, t.Value, t.Line)
-		}
-	*/
+	// Template tokenization complete
 
 	// Apply whitespace control processing to the tokens to handle
 	// the whitespace trimming between template elements
 	p.tokens = processWhitespaceControl(p.tokens)
+
+	// We don't need to call preserveHtmlContent() anymore since our tokenizer
+	// already preserves HTML content exactly as it was in the source
 
 	// Parse tokens into nodes
 	nodes, err := p.parseOuterTemplate()
@@ -85,6 +83,135 @@ func (p *Parser) Parse(source string) (Node, error) {
 	}
 
 	return NewRootNode(nodes, 1), nil
+}
+
+// preserveHtmlContent keeps HTML content exactly as it was in the original source
+func (p *Parser) preserveHtmlContent() {
+	// Create a totally new approach - we'll convert HTML segments to verbatim TEXT tokens
+	var newTokens []Token
+
+	// Group tokens by whether they're twig tags or regular text
+	i := 0
+	for i < len(p.tokens) {
+		token := p.tokens[i]
+
+		// Handle Twig template tags - these are the only tokens we care about
+		if token.Type == TOKEN_VAR_START || token.Type == TOKEN_VAR_START_TRIM ||
+			token.Type == TOKEN_BLOCK_START || token.Type == TOKEN_BLOCK_START_TRIM {
+
+			// Found a starting tag, add it as is
+			newTokens = append(newTokens, token)
+			i++
+
+			// Keep all tokens until the matching end tag
+			endFound := false
+
+			// Determine which end tag we're looking for
+			var endType int
+			if token.Type == TOKEN_VAR_START || token.Type == TOKEN_VAR_START_TRIM {
+				endType = TOKEN_VAR_END // Also matches TOKEN_VAR_END_TRIM
+			} else {
+				endType = TOKEN_BLOCK_END // Also matches TOKEN_BLOCK_END_TRIM
+			}
+
+			// Add all tokens inside the tag
+			for i < len(p.tokens) {
+				innerToken := p.tokens[i]
+
+				// Check if we found the end tag
+				if innerToken.Type == endType ||
+					(endType == TOKEN_VAR_END && innerToken.Type == TOKEN_VAR_END_TRIM) ||
+					(endType == TOKEN_BLOCK_END && innerToken.Type == TOKEN_BLOCK_END_TRIM) {
+					// Found the end tag
+					newTokens = append(newTokens, innerToken)
+					i++
+					endFound = true
+					break
+				}
+
+				// Add the token
+				newTokens = append(newTokens, innerToken)
+				i++
+			}
+
+			if !endFound {
+				// Error: unclosed tag - silent failure
+			}
+
+			continue
+		} else if token.Type == TOKEN_COMMENT_START {
+			// Handle comments similarly to tags
+			newTokens = append(newTokens, token)
+			i++
+
+			// Find the end of the comment
+			endFound := false
+
+			for i < len(p.tokens) {
+				innerToken := p.tokens[i]
+
+				if innerToken.Type == TOKEN_COMMENT_END {
+					// Found the end of the comment
+					newTokens = append(newTokens, innerToken)
+					i++
+					endFound = true
+					break
+				}
+
+				// Add the token
+				newTokens = append(newTokens, innerToken)
+				i++
+			}
+
+			if !endFound {
+				// Error: unclosed comment - silent failure
+			}
+
+			continue
+		} else if token.Type == TOKEN_TEXT {
+			// Keep text tokens as is
+			newTokens = append(newTokens, token)
+			i++
+			continue
+		}
+
+		// Any tokens that aren't explicitly template tags - convert to TEXT
+		// These are typically part of HTML content
+		startPos := i
+		_ = token.Line
+		var tokenValue strings.Builder
+		startLine := token.Line
+
+		// Capture original source for this segment
+		if startPos < len(p.tokens) {
+			// First, append the current token
+			tokenValue.WriteString(token.Value)
+			i++
+
+			// See if there are more tokens on this line that aren't template tags
+			for i < len(p.tokens) &&
+				p.tokens[i].Type != TOKEN_VAR_START && p.tokens[i].Type != TOKEN_VAR_START_TRIM &&
+				p.tokens[i].Type != TOKEN_BLOCK_START && p.tokens[i].Type != TOKEN_BLOCK_START_TRIM &&
+				p.tokens[i].Type != TOKEN_VAR_END && p.tokens[i].Type != TOKEN_VAR_END_TRIM &&
+				p.tokens[i].Type != TOKEN_BLOCK_END && p.tokens[i].Type != TOKEN_BLOCK_END_TRIM &&
+				p.tokens[i].Type != TOKEN_COMMENT_START && p.tokens[i].Type != TOKEN_COMMENT_END {
+
+				// Append the token
+				tokenValue.WriteString(p.tokens[i].Value)
+				i++
+			}
+
+			// Add as a TEXT token
+			newTokens = append(newTokens, Token{
+				Type:  TOKEN_TEXT,
+				Value: tokenValue.String(),
+				Line:  startLine,
+			})
+		}
+	}
+
+	// Update the parser's tokens
+	p.tokens = newTokens
 }
 
 // Initialize block handlers for different tag types
@@ -300,7 +427,8 @@ func (p *Parser) tokenize() ([]Token, error) {
 			continue
 		}
 
-		// Handle plain text
+		// Handle plain text - this is the entire HTML content
+		// We should collect all text up to the next twig tag start
 		start := p.cursor
 		for p.cursor < len(p.source) &&
 			!p.matchString("{{-") && !p.matchString("{{") &&
@@ -315,6 +443,8 @@ func (p *Parser) tokenize() ([]Token, error) {
 		}
 
 		if start != p.cursor {
+			// Get the text segment as a single token, preserving ALL characters
+			// This is critical for HTML parsing - we do not want to tokenize HTML!
 			value := p.source[start:p.cursor]
 			tokens = append(tokens, Token{Type: TOKEN_TEXT, Value: value, Line: p.line})
 		}
@@ -362,11 +492,11 @@ func isAlphaNumeric(c byte) bool {
 }
 
 func isOperator(c byte) bool {
-	return strings.ContainsRune("+-*/=<>!&~^%?:", rune(c))
+	return strings.ContainsRune("+-*/=<>!&~^%", rune(c))
 }
 
 func isPunctuation(c byte) bool {
-	return strings.ContainsRune("()[]{},.:|", rune(c))
+	return strings.ContainsRune("()[]{},.:|?", rune(c))
 }
 
 func isWhitespace(c byte) bool {
@@ -410,51 +540,9 @@ func processEscapeSequences(s string) string {
 	return result.String()
 }
 
-// Replace HTML attributes like type="{{ type }}" with actual Twig variables in HTML
+// Leave HTML attributes untouched - no manipulation
 func fixHTMLAttributes(input string) string {
-	// Process escaped braces
-	// For attributes, we need to preserve the backslash before the brace temporarily
-	// so that the actual twig parser doesn't interpret {{ as the start of a variable
-	// We'll transform \{ to {, etc. during final rendering
-	var result []byte
-	for i := 0; i < len(input); i++ {
-		if i < len(input)-1 && input[i] == '\\' && (input[i+1] == '{' || input[i+1] == '}') {
-			// Keep the backslash and brace - we'll handle this in the renderer
-			result = append(result, input[i], input[i+1])
-			i++ // Skip both the backslash and the character
-		} else {
-			result = append(result, input[i])
-		}
-	}
-
-	input = string(result)
-
-	// Search for patterns like: type="{{ type }}" or name="{{ name }}"
-	for i := 0; i < len(input); i++ {
-		// Find potential attribute patterns
-		attrStart := strings.Index(input[i:], "=\"{{")
-		if attrStart == -1 {
-			break // No more attributes with embedded variables
-		}
-
-		attrStart += i // Adjust to full string position
-
-		// Find the end of the attribute value
-		attrEnd := strings.Index(input[attrStart+3:], "}}\"")
-		if attrEnd == -1 {
-			break // No closing variable
-		}
-
-		attrEnd += attrStart + 3 // Adjust to full string position
-
-		// Extract the variable name (between {{ and }})
-		varName := strings.TrimSpace(input[attrStart+3 : attrEnd])
-
-		// Replace the attribute string with an empty string for now
-		// We'll need to handle this specially in the parsing logic
-		input = input[:attrStart] + "=" + varName + input[attrEnd+2:]
-	}
-
+	// Don't modify HTML attributes at all - return as-is
 	return input
 }
 
@@ -603,7 +691,8 @@ func (p *Parser) parseExpression() (Node, error) {
 	}
 
 	// Check for binary operators (and, or, ==, !=, <, >, etc.)
-	if p.tokenIndex < len(p.tokens) &&
+	// Loop to handle multiple binary operators in sequence, such as 'hello' ~ ' ' ~ 'world'
+	for p.tokenIndex < len(p.tokens) &&
 		(p.tokens[p.tokenIndex].Type == TOKEN_OPERATOR ||
 			(p.tokens[p.tokenIndex].Type == TOKEN_NAME &&
 				(p.tokens[p.tokenIndex].Value == "and" ||
@@ -678,6 +767,24 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 	}
 
 	token := p.tokens[p.tokenIndex]
+
+	// Handle unary operators like 'not'
+	if token.Type == TOKEN_NAME && token.Value == "not" {
+		// Skip the 'not' token
+		p.tokenIndex++
+
+		// Get the line number for the unary node
+		line := token.Line
+
+		// Parse the operand
+		operand, err := p.parseSimpleExpression()
+		if err != nil {
+			return nil, err
+		}
+
+		// Create a unary NOT node
+		return NewUnaryNode("not", operand, line), nil
+	}
 
 	switch token.Type {
 	case TOKEN_STRING:
@@ -952,11 +1059,74 @@ func (p *Parser) parseFilters(node Node) (Node, error) {
 	return node, nil
 }
 
+// Operator precedence levels (higher number = higher precedence)
+const (
+	PREC_LOWEST  = 0
+	PREC_OR      = 1 // or, ||
+	PREC_AND     = 2 // and, &&
+	PREC_COMPARE = 3 // ==, !=, <, >, <=, >=, in, not in, matches, starts with, ends with
+	PREC_SUM     = 4 // +, -
+	PREC_PRODUCT = 5 // *, /, %
+	PREC_POWER   = 6 // ^
+	PREC_PREFIX  = 7 // not, !, +, - (unary)
+)
+
+// Get operator precedence
+func getOperatorPrecedence(operator string) int {
+	switch operator {
+	case "or", "||":
+		return PREC_OR
+	case "and", "&&":
+		return PREC_AND
+	case "==", "!=", "<", ">", "<=", ">=", "in", "not in", "matches", "starts with", "ends with", "is", "is not":
+		return PREC_COMPARE
+	case "+", "-", "~":
+		return PREC_SUM
+	case "*", "/", "%":
+		return PREC_PRODUCT
+	case "^":
+		return PREC_POWER
+	default:
+		return PREC_LOWEST
+	}
+}
+
 // Parse binary expressions (a + b, a and b, a in b, etc.)
 func (p *Parser) parseBinaryExpression(left Node) (Node, error) {
 	token := p.tokens[p.tokenIndex]
 	operator := token.Value
 	line := token.Line
+
+	// Special handling for "not defined" pattern
+	// This is the common pattern used in Twig: {% if variable not defined %}
+	if operator == "not" && p.tokenIndex+1 < len(p.tokens) &&
+		p.tokens[p.tokenIndex+1].Type == TOKEN_NAME &&
+		p.tokens[p.tokenIndex+1].Value == "defined" {
+
+		// Next token should be "defined"
+		p.tokenIndex += 2 // Skip both "not" and "defined"
+
+		// Create a TestNode with "defined" test
+		testNode := &TestNode{
+			ExpressionNode: ExpressionNode{
+				exprType: ExprTest,
+				line:     line,
+			},
+			node: left,
+			test: "defined",
+			args: []Node{},
+		}
+
+		// Then wrap it in a unary "not" node
+		return &UnaryNode{
+			ExpressionNode: ExpressionNode{
+				exprType: ExprUnary,
+				line:     line,
+			},
+			operator: "not",
+			node:     testNode,
+		}, nil
+	}
 
 	// Process multi-word operators
 	if token.Type == TOKEN_NAME {
@@ -1074,13 +1244,78 @@ func (p *Parser) parseBinaryExpression(left Node) (Node, error) {
 
 	// If we get here, we have a regular binary operator
 
-	// For regular binary operators, parse the right operand
-	right, err := p.parseExpression()
+	// Get precedence of current operator
+	precedence := getOperatorPrecedence(operator)
+
+	// Parse the right side expression
+	right, err := p.parseSimpleExpression()
 	if err != nil {
 		return nil, err
 	}
 
-	return NewBinaryNode(operator, left, right, line), nil
+	// Create the current binary node
+	binaryNode := NewBinaryNode(operator, left, right, line)
+
+	// Check for another binary operator
+	if p.tokenIndex < len(p.tokens) &&
+		(p.tokens[p.tokenIndex].Type == TOKEN_OPERATOR ||
+			(p.tokens[p.tokenIndex].Type == TOKEN_NAME &&
+				(p.tokens[p.tokenIndex].Value == "and" ||
+					p.tokens[p.tokenIndex].Value == "or" ||
+					p.tokens[p.tokenIndex].Value == "in" ||
+					p.tokens[p.tokenIndex].Value == "not" ||
+					p.tokens[p.tokenIndex].Value == "is" ||
+					p.tokens[p.tokenIndex].Value == "matches" ||
+					p.tokens[p.tokenIndex].Value == "starts" ||
+					p.tokens[p.tokenIndex].Value == "ends"))) {
+
+		// Get the next operator and its precedence
+		nextOperator := p.tokens[p.tokenIndex].Value
+		if p.tokens[p.tokenIndex].Type == TOKEN_NAME {
+			// Handle multi-word operators
+			if nextOperator == "not" && p.tokenIndex+1 < len(p.tokens) &&
+				p.tokens[p.tokenIndex+1].Type == TOKEN_NAME &&
+				p.tokens[p.tokenIndex+1].Value == "in" {
+				nextOperator = "not in"
+			} else if nextOperator == "is" && p.tokenIndex+1 < len(p.tokens) &&
+				p.tokens[p.tokenIndex+1].Type == TOKEN_NAME &&
+				p.tokens[p.tokenIndex+1].Value == "not" {
+				nextOperator = "is not"
+			} else if nextOperator == "starts" && p.tokenIndex+1 < len(p.tokens) &&
+				p.tokens[p.tokenIndex+1].Type == TOKEN_NAME &&
+				p.tokens[p.tokenIndex+1].Value == "with" {
+				nextOperator = "starts with"
+			} else if nextOperator == "ends" && p.tokenIndex+1 < len(p.tokens) &&
+				p.tokens[p.tokenIndex+1].Type == TOKEN_NAME &&
+				p.tokens[p.tokenIndex+1].Value == "with" {
+				nextOperator = "ends with"
+			}
+		}
+
+		nextPrecedence := getOperatorPrecedence(nextOperator)
+
+		// If the next operator has higher precedence, we need to parse it first
+		if nextPrecedence > precedence {
+			// Replace the right side with a binary expression
+			newRight, err := p.parseBinaryExpression(right)
+			if err != nil {
+				return nil, err
+			}
+
+			// Update the binary node with the new right side
+			binaryNode = NewBinaryNode(operator, left, newRight, line)
+		}
+	}
+
+	// Check for ternary operator after parsing the binary expression
+	if p.tokenIndex < len(p.tokens) &&
+		p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
+		p.tokens[p.tokenIndex].Value == "?" {
+		// This is a conditional expression, use the binary node as the condition
+		return p.parseConditionalExpression(binaryNode)
+	}
+
+	return binaryNode, nil
 }
 
 // Parse if statement
@@ -1102,29 +1337,80 @@ func (p *Parser) parseIf(parser *Parser) (Node, error) {
 	}
 	parser.tokenIndex++
 
-	// Parse the if body (statements between if and endif/else)
+	// Parse the if body (statements between if and endif/else/elseif)
 	ifBody, err := parser.parseOuterTemplate()
 	if err != nil {
 		return nil, err
 	}
 
+	// Initialize conditions and bodies arrays with the initial if condition and body
+	conditions := []Node{condition}
+	bodies := [][]Node{ifBody}
 	var elseBody []Node
 
-	// Check for else or endif
-	if parser.tokenIndex < len(parser.tokens) && parser.tokens[parser.tokenIndex].Type == TOKEN_BLOCK_START {
+	// Keep track of whether we've seen an else block
+	var hasElseBlock bool
+
+	// Process subsequent tags (elseif, else, endif)
+	for {
+		// We expect a block start token for elseif, else, or endif
+		if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_START {
+			return nil, fmt.Errorf("unexpected end of template, expected endif at line %d", ifLine)
+		}
 		parser.tokenIndex++
 
+		// We expect a name token (elseif, else, or endif)
 		if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_NAME {
 			return nil, fmt.Errorf("expected block name at line %d", parser.tokens[parser.tokenIndex-1].Line)
 		}
 
-		// Check if this is an else block
-		if parser.tokens[parser.tokenIndex].Value == "else" {
+		// Get the tag name
+		blockName := parser.tokens[parser.tokenIndex].Value
+		blockLine := parser.tokens[parser.tokenIndex].Line
+		parser.tokenIndex++
+
+		// Process based on the tag type
+		if blockName == "elseif" {
+			// Check if we've already seen an else block - elseif can't come after else
+			if hasElseBlock {
+				return nil, fmt.Errorf("unexpected elseif after else at line %d", blockLine)
+			}
+
+			// Handle elseif condition
+			elseifCondition, err := parser.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+
+			// Expect block end token
+			if parser.tokenIndex >= len(parser.tokens) || !isBlockEndToken(parser.tokens[parser.tokenIndex].Type) {
+				return nil, fmt.Errorf("expected block end after elseif condition at line %d", blockLine)
+			}
 			parser.tokenIndex++
 
-			// Expect the block end token
-			if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
-				return nil, fmt.Errorf("expected block end after else at line %d", parser.tokens[parser.tokenIndex-1].Line)
+			// Parse the elseif body
+			elseifBody, err := parser.parseOuterTemplate()
+			if err != nil {
+				return nil, err
+			}
+
+			// Add condition and body to our arrays
+			conditions = append(conditions, elseifCondition)
+			bodies = append(bodies, elseifBody)
+
+			// Continue checking for more elseif/else/endif tags
+		} else if blockName == "else" {
+			// Check if we've already seen an else block - can't have multiple else blocks
+			if hasElseBlock {
+				return nil, fmt.Errorf("multiple else blocks found at line %d", blockLine)
+			}
+
+			// Mark that we've seen an else block
+			hasElseBlock = true
+
+			// Expect block end token
+			if parser.tokenIndex >= len(parser.tokens) || !isBlockEndToken(parser.tokens[parser.tokenIndex].Type) {
+				return nil, fmt.Errorf("expected block end after else tag at line %d", blockLine)
 			}
 			parser.tokenIndex++
 
@@ -1134,39 +1420,25 @@ func (p *Parser) parseIf(parser *Parser) (Node, error) {
 				return nil, err
 			}
 
-			// Now expect the endif
-			if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_START {
-				return nil, fmt.Errorf("expected endif block at line %d", parser.tokens[parser.tokenIndex-1].Line)
+			// After else, we need to find endif next (handled in next iteration)
+		} else if blockName == "endif" {
+			// Expect block end token
+			if parser.tokenIndex >= len(parser.tokens) || !isBlockEndToken(parser.tokens[parser.tokenIndex].Type) {
+				return nil, fmt.Errorf("expected block end after endif at line %d", blockLine)
 			}
 			parser.tokenIndex++
 
-			if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_NAME {
-				return nil, fmt.Errorf("expected endif at line %d", parser.tokens[parser.tokenIndex-1].Line)
-			}
-
-			if parser.tokens[parser.tokenIndex].Value != "endif" {
-				return nil, fmt.Errorf("expected endif, got %s at line %d", parser.tokens[parser.tokenIndex].Value, parser.tokens[parser.tokenIndex].Line)
-			}
-			parser.tokenIndex++
-		} else if parser.tokens[parser.tokenIndex].Value == "endif" {
-			parser.tokenIndex++
+			// We found the endif, we're done
+			break
 		} else {
-			return nil, fmt.Errorf("expected else or endif, got %s at line %d", parser.tokens[parser.tokenIndex].Value, parser.tokens[parser.tokenIndex].Line)
+			return nil, fmt.Errorf("expected elseif, else, or endif, got %s at line %d", blockName, blockLine)
 		}
-
-		// Expect the final block end token (either regular or trim variant)
-		if parser.tokenIndex >= len(parser.tokens) || !isBlockEndToken(parser.tokens[parser.tokenIndex].Type) {
-			return nil, fmt.Errorf("expected block end after endif at line %d", parser.tokens[parser.tokenIndex-1].Line)
-		}
-		parser.tokenIndex++
-	} else {
-		return nil, fmt.Errorf("unexpected end of template, expected endif at line %d", ifLine)
 	}
 
-	// Create the if node
+	// Create and return the if node
 	ifNode := &IfNode{
-		conditions: []Node{condition},
-		bodies:     [][]Node{ifBody},
+		conditions: conditions,
+		bodies:     bodies,
 		elseBranch: elseBody,
 		line:       ifLine,
 	}
@@ -1897,4 +2169,14 @@ func (p *Parser) parseSpaceless(parser *Parser) (Node, error) {
 
 	// Create and return the spaceless node
 	return NewSpacelessNode(spacelessBody, spacelessLine), nil
+}
+
+// HtmlPreservingTokenize is an exported version of htmlPreservingTokenize for testing
+func (p *Parser) HtmlPreservingTokenize() ([]Token, error) {
+	return p.htmlPreservingTokenize()
+}
+
+// SetSource sets the source for parsing - used for testing
+func (p *Parser) SetSource(source string) {
+	p.source = source
 }

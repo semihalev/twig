@@ -2,7 +2,6 @@ package twig
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +31,7 @@ func (l *CompiledLoader) Load(name string) (string, error) {
 	}
 
 	// Read the file
-	data, err := ioutil.ReadFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read compiled template file: %w", err)
 	}
@@ -89,7 +88,7 @@ func (l *CompiledLoader) SaveCompiled(engine *Engine, name string) error {
 
 	// Save the compiled template
 	filePath := filepath.Join(l.directory, name+l.fileExtension)
-	if err := ioutil.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write compiled template file: %w", err)
 	}
 
@@ -119,7 +118,7 @@ func (l *CompiledLoader) LoadAll(engine *Engine) error {
 	LogInfo("Loading all compiled templates from directory: %s", l.directory)
 
 	// List all files in the directory
-	files, err := ioutil.ReadDir(l.directory)
+	files, err := os.ReadDir(l.directory)
 	if err != nil {
 		LogError(err, fmt.Sprintf("Failed to read directory: %s", l.directory))
 		return fmt.Errorf("failed to read compiled templates directory '%s': %w", l.directory, err)

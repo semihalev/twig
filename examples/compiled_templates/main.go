@@ -22,7 +22,7 @@ func main() {
 	}
 
 	// Create a loader for source templates
-	sourceLoader := twig.NewFileSystemLoader("./templates")
+	sourceLoader := twig.NewFileSystemLoader([]string{"./templates"})
 	engine.RegisterLoader(sourceLoader)
 
 	// Create a loader for compiled templates

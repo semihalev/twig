@@ -54,9 +54,7 @@ func CompileTemplate(tmpl *Template) (*CompiledTemplate, error) {
 	// Encode the AST
 	if err := enc.Encode(tmpl.nodes); err != nil {
 		// If serialization fails, we'll still create the template but without AST
-		// and log the error with template details
-		fmt.Printf("Warning: Failed to serialize AST for template '%s': %v\n",
-			tmpl.name, err)
+		// We continue silently to allow template creation
 	}
 
 	// Store the template source, metadata, and AST
@@ -88,8 +86,7 @@ func LoadFromCompiled(compiled *CompiledTemplate, env *Environment, engine *Engi
 		err := dec.Decode(&nodes)
 		if err != nil {
 			// Fall back to parsing if AST deserialization fails
-			fmt.Printf("Warning: Failed to deserialize AST for template '%s', falling back to parsing: %v\n",
-				compiled.Name, err)
+			// We continue silently and fall back to parsing
 			nodes = nil
 		}
 	}

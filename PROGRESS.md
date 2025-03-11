@@ -99,6 +99,27 @@
    - Added comprehensive tests for string escape sequences
    - Updated documentation with escape sequence examples and use cases
 
+## Recent Improvements
+
+7. **Operator Expression Handling**
+   - Fixed exponentiation operator (^) parsing and evaluation
+   - Fixed string concatenation operator (~) for multiple concatenations
+   - Implemented proper operator precedence system for expressions
+   - Added support for modulo operator (%)
+   - Enhanced parser to correctly handle complex expressions
+   - Added comprehensive tests for all operators and precedence rules
+   - Fixed tokenizer to properly identify operators in all contexts
+   - Improved expression tree building to respect operator precedence
+
+8. **Function Support in For Loops**
+   - Fixed direct usage of range function in for loops
+   - Added tokenizer support for function calls in for loop sequences
+   - Enhanced the renderer to directly handle function call nodes
+   - Added special handling for range function to simplify template syntax
+   - Improved the parser to correctly process function calls with parameters
+   - Added support for negative step values via variables: `{% set step = -1 %}{% for i in range(5, 1, step) %}`
+   - Added tests to verify range function works with steps and loop variables
+
 ## Future Improvements
 
 1. **More Tests**

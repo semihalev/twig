@@ -32,7 +32,8 @@ type FilterChainItem struct {
 // DetectFilterChain analyzes a filter node and extracts all filters in the chain
 // Returns the base node and a slice of all filters to be applied
 func (ctx *RenderContext) DetectFilterChain(node Node) (Node, []FilterChainItem, error) {
-	var chain []FilterChainItem
+	// Preallocate with a reasonable capacity for typical filter chains
+	chain := make([]FilterChainItem, 0, 4)
 	currentNode := node
 
 	// Traverse down the filter chain, collecting filters as we go
@@ -54,7 +55,8 @@ func (ctx *RenderContext) DetectFilterChain(node Node) (Node, []FilterChainItem,
 			args[i] = val
 		}
 
-		// Add this filter to the chain (prepend to maintain order)
+		// Insert this filter at the beginning of the chain
+		// (prepend to maintain order)
 		chain = append([]FilterChainItem{{
 			name: filterNode.filter,
 			args: args,

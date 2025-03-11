@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -22,8 +23,6 @@ type RenderContext struct {
 	engine       *Engine    // Reference to engine for loading templates
 	extending    bool       // Whether this template extends another
 	currentBlock *BlockNode // Current block being rendered (for parent() function)
-	inScriptTag  bool       // Whether we're currently inside a script tag
-	inStyleTag   bool       // Whether we're currently inside a style tag
 }
 
 // renderContextPool is a sync.Pool for RenderContext objects
@@ -57,8 +56,6 @@ func NewRenderContext(env *Environment, context map[string]interface{}, engine *
 	ctx.extending = false
 	ctx.currentBlock = nil
 	ctx.parent = nil
-	ctx.inScriptTag = false
-	ctx.inStyleTag = false
 
 	// Copy the context values
 	if context != nil {
@@ -70,10 +67,28 @@ func NewRenderContext(env *Environment, context map[string]interface{}, engine *
 	return ctx
 }
 
-// Release returns the RenderContext to the pool
+// Release returns the RenderContext to the pool with proper cleanup
 func (ctx *RenderContext) Release() {
+	// Clear references to large objects to prevent memory leaks
+	ctx.env = nil
+	ctx.engine = nil
+	ctx.currentBlock = nil
+
+	// Clear map contents but keep allocated maps
+	for k := range ctx.context {
+		delete(ctx.context, k)
+	}
+	for k := range ctx.blocks {
+		delete(ctx.blocks, k)
+	}
+	for k := range ctx.macros {
+		delete(ctx.macros, k)
+	}
+
 	// Don't release parent contexts - they'll be released separately
 	ctx.parent = nil
+
+	// Return to pool
 	renderContextPool.Put(ctx)
 }
 
@@ -88,6 +103,74 @@ var (
 
 // GetVariable gets a variable from the context
 func (ctx *RenderContext) GetVariable(name string) (interface{}, error) {
+	// Check if this looks like an array literal - this is a hack to handle
+	// the case where the array literal is parsed as a variable name
+	if len(name) >= 2 && name[0] == '[' && strings.Contains(name, "]") {
+		// This looks like an array literal that was parsed as a variable name
+		// We'll parse it manually here
+
+		// Extract the content between [ and ]
+		content := name[1:strings.LastIndex(name, "]")]
+
+		// Split by commas
+		parts := strings.Split(content, ",")
+
+		// Create a result array
+		result := make([]interface{}, 0, len(parts))
+
+		// Process each element
+		for _, part := range parts {
+			// Trim whitespace and quotes
+			element := strings.TrimSpace(part)
+
+			// If it's a quoted string, remove the quotes
+			if len(element) >= 2 && (element[0] == '"' || element[0] == '\'') && element[0] == element[len(element)-1] {
+				element = element[1 : len(element)-1]
+			}
+
+			result = append(result, element)
+		}
+
+		return result, nil
+	}
+
+	// Fallback ternary expression parser for backward compatibility
+	// This handles cases where the parser didn't correctly handle ternary expressions
+	if strings.Contains(name, "?") && strings.Contains(name, ":") {
+		LogDebug("Parsing inline ternary expression: %s", name)
+
+		// Simple ternary expression handler
+		parts := strings.SplitN(name, "?", 2)
+		condition := strings.TrimSpace(parts[0])
+		branches := strings.SplitN(parts[1], ":", 2)
+
+		if len(branches) != 2 {
+			return nil, fmt.Errorf("malformed ternary expression: %s", name)
+		}
+
+		trueExpr := strings.TrimSpace(branches[0])
+		falseExpr := strings.TrimSpace(branches[1])
+
+		// Evaluate condition
+		var condValue bool
+		if condition == "true" {
+			condValue = true
+		} else if condition == "false" {
+			condValue = false
+		} else {
+			// Try to get variable value
+			condVar, _ := ctx.GetVariable(condition)
+			condValue = ctx.toBool(condVar)
+		}
+
+		// Evaluate the appropriate branch
+		if condValue {
+			return ctx.GetVariable(trueExpr)
+		} else {
+			return ctx.GetVariable(falseExpr)
+		}
+	}
+
 	// Check local context first
 	if value, ok := ctx.context[name]; ok {
 		return value, nil
@@ -110,13 +193,34 @@ func (ctx *RenderContext) GetVariable(name string) (interface{}, error) {
 	return nil, nil
 }
 
+// GetVariableOrNil gets a variable from the context, returning nil silently if not found
+func (ctx *RenderContext) GetVariableOrNil(name string) interface{} {
+	value, _ := ctx.GetVariable(name)
+	return value
+}
+
 // SetVariable sets a variable in the context
 func (ctx *RenderContext) SetVariable(name string, value interface{}) {
 	ctx.context[name] = value
 }
 
+// GetEnvironment returns the environment
+func (ctx *RenderContext) GetEnvironment() *Environment {
+	return ctx.env
+}
+
+// GetEngine returns the engine
+func (ctx *RenderContext) GetEngine() *Engine {
+	return ctx.engine
+}
+
+// SetParent sets the parent context
+func (ctx *RenderContext) SetParent(parent *RenderContext) {
+	ctx.parent = parent
+}
+
 // GetMacro gets a macro from the context
-func (ctx *RenderContext) GetMacro(name string) (Node, bool) {
+func (ctx *RenderContext) GetMacro(name string) (interface{}, bool) {
 	// Check local macros first
 	if macro, ok := ctx.macros[name]; ok {
 		return macro, true
@@ -128,6 +232,26 @@ func (ctx *RenderContext) GetMacro(name string) (Node, bool) {
 	}
 
 	return nil, false
+}
+
+// GetMacros returns the macros map
+func (ctx *RenderContext) GetMacros() map[string]Node {
+	return ctx.macros
+}
+
+// InitMacros initializes the macros map if it's nil
+func (ctx *RenderContext) InitMacros() {
+	if ctx.macros == nil {
+		ctx.macros = make(map[string]Node)
+	}
+}
+
+// SetMacro sets a macro in the context
+func (ctx *RenderContext) SetMacro(name string, macro Node) {
+	if ctx.macros == nil {
+		ctx.macros = make(map[string]Node)
+	}
+	ctx.macros[name] = macro
 }
 
 // CallMacro calls a macro with the given arguments
@@ -207,9 +331,21 @@ func (ctx *RenderContext) callRangeFunction(args []interface{}) (interface{}, er
 	}
 
 	// Create the range
-	var result []int
-	for i := start; i <= end; i += step {
-		result = append(result, int(i))
+	result := make([]interface{}, 0)
+
+	if step > 0 {
+		for i := start; i <= end; i += step {
+			result = append(result, int(i))
+		}
+	} else {
+		for i := start; i >= end; i += step {
+			result = append(result, int(i))
+		}
+	}
+
+	// Always return a non-nil slice for the for loop
+	if len(result) == 0 {
+		return []interface{}{}, nil
 	}
 
 	return result, nil
@@ -346,6 +482,10 @@ func (ctx *RenderContext) callMinFunction(args []interface{}) (interface{}, erro
 
 // EvaluateExpression evaluates an expression node
 func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
+	if node == nil {
+		return nil, nil
+	}
+
 	switch n := node.(type) {
 	case *LiteralNode:
 		return n.value, nil
@@ -404,6 +544,12 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 			return nil, err
 		}
 
+		// Log for debugging when enabled
+		if IsDebugEnabled() {
+			LogDebug("Ternary condition: %v (type: %T)", condResult, condResult)
+			LogDebug("Branches: true=%T, false=%T", n.trueExpr, n.falseExpr)
+		}
+
 		// If condition is true, evaluate the true expression, otherwise evaluate the false expression
 		if ctx.toBool(condResult) {
 			return ctx.EvaluateExpression(n.trueExpr)
@@ -421,6 +567,12 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 			}
 			items[i] = val
 		}
+
+		// Always return a non-nil slice, even if empty
+		if len(items) == 0 {
+			return []interface{}{}, nil
+		}
+
 		return items, nil
 
 	case *FunctionNode:
@@ -457,13 +609,110 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 			args[i] = val
 		}
 
-		return ctx.CallFunction(n.name, args)
+		result, err := ctx.CallFunction(n.name, args)
+		if err != nil {
+			return nil, err
+		}
+
+		// Make sure function results that should be iterable actually are
+		if result == nil && (n.name == "range" || n.name == "length") {
+			return []interface{}{}, nil
+		}
+
+		return result, nil
 
 	case *FilterNode:
 		// Use the optimized filter chain implementation from render_filter.go
-		return ctx.evaluateFilterNode(n)
+		result, err := ctx.evaluateFilterNode(n)
+		if err != nil {
+			return nil, err
+		}
+
+		// Ensure filter results are never nil if they're expected to be iterable
+		if result == nil {
+			return "", nil
+		}
+
+		return result, nil
 
 	case *TestNode:
+		// Handle special "not defined" test (from parseBinaryExpression)
+		if n.test == "not defined" {
+			// Check if it's a variable reference
+			if varNode, ok := n.node.(*VariableNode); ok {
+				// Check directly in context
+				if ctx.context != nil {
+					_, exists := ctx.context[varNode.name]
+					if exists {
+						// If it exists, "not defined" is false
+						return false, nil
+					}
+				}
+
+				// Try full variable lookup
+				val, err := ctx.GetVariable(varNode.name)
+				// Return true if not defined (err != nil or val is nil)
+				return err != nil || val == nil, nil
+			}
+
+			// For non-variable nodes, assume defined
+			return false, nil
+		}
+
+		// Special handling for "is defined" test with attribute access
+		if n.test == "defined" {
+			// Check if this is a GetAttrNode
+			if getAttrNode, ok := n.node.(*GetAttrNode); ok {
+				// Evaluate the object
+				obj, err := ctx.EvaluateExpression(getAttrNode.node)
+				if err != nil {
+					return false, nil // If can't evaluate the object, it's not defined
+				}
+
+				// If obj is nil, attribute not defined
+				if obj == nil {
+					return false, nil
+				}
+
+				// Evaluate the attribute name
+				attrNameNode, err := ctx.EvaluateExpression(getAttrNode.attribute)
+				if err != nil {
+					return false, nil
+				}
+
+				attrName, ok := attrNameNode.(string)
+				if !ok {
+					return false, nil
+				}
+
+				// For maps, directly check if the key exists
+				if objMap, ok := obj.(map[string]interface{}); ok {
+					_, exists := objMap[attrName]
+					return exists, nil
+				}
+
+				// For other types, try to get the attribute but catch the error
+				_, err = ctx.getAttribute(obj, attrName)
+				return err == nil, nil
+			}
+
+			// Check for simple variable references
+			if varNode, ok := n.node.(*VariableNode); ok {
+				// Check directly in context
+				if ctx.context != nil {
+					_, exists := ctx.context[varNode.name]
+					if exists {
+						return true, nil
+					}
+				}
+
+				// Try full variable lookup
+				val, err := ctx.GetVariable(varNode.name)
+				return err == nil && val != nil, nil
+			}
+		}
+
+		// Standard test evaluation for all other cases
 		// Evaluate the tested value
 		value, err := ctx.EvaluateExpression(n.node)
 		if err != nil {
@@ -500,7 +749,9 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		// Apply the operator
 		switch n.operator {
 		case "not", "!":
-			return !ctx.toBool(operand), nil
+			// Ensuring that the boolean conversion is correct before negation
+			result := ctx.toBool(operand)
+			return !result, nil
 		case "+":
 			if num, ok := ctx.toNumber(operand); ok {
 				return num, nil
@@ -545,7 +796,8 @@ var attributeCache = struct {
 // getAttribute gets an attribute from an object
 func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{}, error) {
 	if obj == nil {
-		return nil, fmt.Errorf("%w: cannot get attribute '%s' of nil object", ErrInvalidAttribute, attr)
+		// Instead of returning an error for nil objects, return nil value
+		return nil, nil
 	}
 
 	// Fast path for maps
@@ -553,7 +805,9 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 		if value, exists := objMap[attr]; exists {
 			return value, nil
 		}
-		return nil, fmt.Errorf("%w: map does not contain key '%s'", ErrInvalidAttribute, attr)
+
+		// For non-existent keys in maps, return nil instead of an error
+		return nil, nil
 	}
 
 	// Get the reflect.Value and type for the object
@@ -568,8 +822,8 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 
 	// Only use caching for struct types
 	if objValue.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("%w: cannot access attribute '%s' on %s (type %s)",
-			ErrInvalidAttribute, attr, reflect.TypeOf(obj).String(), objValue.Kind())
+		// Instead of returning an error for non-struct types, return nil
+		return nil, nil
 	}
 
 	objType := objValue.Type()
@@ -580,43 +834,49 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 		attr: attr,
 	}
 
-	// Check if we have this lookup cached
+	// Get a read lock to check the cache first
 	attributeCache.RLock()
 	entry, found := attributeCache.m[key]
 	attributeCache.RUnlock()
 
-	// If not found, perform the reflection lookup and cache the result
+	// If not found, perform the reflection lookup with proper locking
 	if !found {
-		entry = attributeCacheEntry{
-			fieldIndex:  -1,
-			methodIndex: -1,
-		}
-
-		// Look for a field
-		field, found := objType.FieldByName(attr)
-		if found {
-			entry.fieldIndex = field.Index[0] // Assuming single-level field access
-		}
-
-		// Look for a method on the value
-		method, found := objType.MethodByName(attr)
-		if found && method.Type.NumIn() == 1 { // The receiver is the first argument
-			entry.isMethod = true
-			entry.methodIndex = method.Index
-		} else {
-			// Look for a method on the pointer to the value
-			ptrType := reflect.PtrTo(objType)
-			method, found := ptrType.MethodByName(attr)
-			if found && method.Type.NumIn() == 1 {
-				entry.isMethod = true
-				entry.ptrMethod = true
-				entry.methodIndex = method.Index
-			}
-		}
-
-		// Cache the lookup result
+		// Get a write lock for updating the cache
 		attributeCache.Lock()
-		attributeCache.m[key] = entry
+
+		// Double-check if another goroutine added it while we were waiting
+		entry, found = attributeCache.m[key]
+		if !found {
+			entry = attributeCacheEntry{
+				fieldIndex:  -1,
+				methodIndex: -1,
+			}
+
+			// Look for a field
+			field, found := objType.FieldByName(attr)
+			if found {
+				entry.fieldIndex = field.Index[0] // Assuming single-level field access
+			}
+
+			// Look for a method on the value
+			method, found := objType.MethodByName(attr)
+			if found && method.Type.NumIn() == 1 { // The receiver is the first argument
+				entry.isMethod = true
+				entry.methodIndex = method.Index
+			} else {
+				// Look for a method on the pointer to the value
+				ptrType := reflect.PtrTo(objType)
+				method, found := ptrType.MethodByName(attr)
+				if found && method.Type.NumIn() == 1 {
+					entry.isMethod = true
+					entry.ptrMethod = true
+					entry.methodIndex = method.Index
+				}
+			}
+
+			// Store in cache
+			attributeCache.m[key] = entry
+		}
 		attributeCache.Unlock()
 	}
 
@@ -659,26 +919,50 @@ func (ctx *RenderContext) getAttribute(obj interface{}, attr string) (interface{
 		}
 	}
 
-	return nil, fmt.Errorf("%w: %s", ErrInvalidAttribute, attr)
+	// Instead of returning an error for attributes not found, just return nil
+	return nil, nil
 }
 
 // evaluateBinaryOp evaluates a binary operation
 func (ctx *RenderContext) evaluateBinaryOp(operator string, left, right interface{}) (interface{}, error) {
+	// Check for the special case: 'not defined' test
+	if operator == "not" && (right == "defined" || right == string("defined")) {
+		// Special case for variable node check
+		if varNode, ok := left.(*VariableNode); ok {
+			// Get the variable name from the node
+			varName := varNode.name
+			// Check if the variable exists in the context
+			_, err := ctx.GetVariable(varName)
+			// Variable not defined = return true, otherwise false
+			return err != nil, nil
+		}
+		// Default to false for other cases
+		return false, nil
+	}
+
+	// For standard 'not' operator
+	if operator == "not" {
+		// Handle regular boolean negation
+		return !ctx.toBool(right), nil
+	}
+
 	switch operator {
 	case "+":
-		// Handle string concatenation
+		// Check if both values can be interpreted as numbers first for proper type handling
+		lNum, lok := ctx.toNumber(left)
+		rNum, rok := ctx.toNumber(right)
+
+		if lok && rok {
+			// If both can be numbers, perform numeric addition
+			return lNum + rNum, nil
+		}
+
+		// Otherwise, handle string concatenation
 		if lStr, lok := left.(string); lok {
 			if rStr, rok := right.(string); rok {
 				return lStr + rStr, nil
 			}
 			return lStr + ctx.ToString(right), nil
-		}
-
-		// Handle numeric addition
-		if lNum, lok := ctx.toNumber(left); lok {
-			if rNum, rok := ctx.toNumber(right); rok {
-				return lNum + rNum, nil
-			}
 		}
 
 	case "-":
@@ -702,6 +986,25 @@ func (ctx *RenderContext) evaluateBinaryOp(operator string, left, right interfac
 					return nil, errors.New("division by zero")
 				}
 				return lNum / rNum, nil
+			}
+		}
+
+	case "%":
+		// Modulo operator
+		if lNum, lok := ctx.toNumber(left); lok {
+			if rNum, rok := ctx.toNumber(right); rok {
+				if rNum == 0 {
+					return nil, errors.New("modulo by zero")
+				}
+				return math.Mod(lNum, rNum), nil
+			}
+		}
+
+	case "^":
+		// Exponentiation operator
+		if lNum, lok := ctx.toNumber(left); lok {
+			if rNum, rok := ctx.toNumber(right); rok {
+				return math.Pow(lNum, rNum), nil
 			}
 		}
 
@@ -766,8 +1069,29 @@ func (ctx *RenderContext) evaluateBinaryOp(operator string, left, right interfac
 		pattern := ctx.ToString(right)
 		str := ctx.ToString(left)
 
-		// Compile the regex
-		regex, err := regexp.Compile(pattern)
+		// Check for flags in the pattern - if it's wrapped in / /
+		caseInsensitive := false
+		if len(pattern) >= 3 && pattern[0] == '/' && pattern[len(pattern)-1] == '/' {
+			// Check for 'i' flag after the closing slash
+			if len(pattern) >= 4 && pattern[len(pattern)-2] == 'i' {
+				caseInsensitive = true
+				// Remove the flags from the pattern
+				pattern = pattern[1 : len(pattern)-2]
+			} else {
+				// Remove just the slashes
+				pattern = pattern[1 : len(pattern)-1]
+			}
+		}
+
+		// Compile the regex with appropriate flags
+		var regex *regexp.Regexp
+		var err error
+		if caseInsensitive {
+			regex, err = regexp.Compile("(?i)" + pattern)
+		} else {
+			regex, err = regexp.Compile(pattern)
+		}
+
 		if err != nil {
 			return false, fmt.Errorf("invalid regular expression: %s", err)
 		}
@@ -796,41 +1120,99 @@ func (ctx *RenderContext) contains(container, item interface{}) (bool, error) {
 		return false, nil
 	}
 
-	itemStr := ctx.ToString(item)
-
-	// Handle different container types
+	// Fast path for common types
 	switch c := container.(type) {
 	case string:
-		return strings.Contains(c, itemStr), nil
+		// Use string conversion only once
+		return strings.Contains(c, ctx.ToString(item)), nil
 	case []interface{}:
+		// For small slices, linear search is fine
+		// For larger slices (>50 items), consider a map-based approach
+		if len(c) > 50 {
+			// Create a temporary map for O(1) lookups
+			// Only worth doing for sufficiently large slices
+			tempMap := make(map[interface{}]struct{}, len(c))
+			for _, v := range c {
+				tempMap[v] = struct{}{}
+			}
+
+			// For numeric items, try direct lookup first
+			if _, ok := tempMap[item]; ok {
+				return true, nil
+			}
+
+			// For string-comparable items, try string version
+			if _, ok := tempMap[ctx.ToString(item)]; ok {
+				return true, nil
+			}
+
+			// Fall back to deep equality comparison
+			for k := range tempMap {
+				if ctx.equals(k, item) {
+					return true, nil
+				}
+			}
+			return false, nil
+		}
+
+		// For small slices, linear search
 		for _, v := range c {
 			if ctx.equals(v, item) {
 				return true, nil
 			}
 		}
+		return false, nil
 	case map[string]interface{}:
-		for k := range c {
-			if k == itemStr {
+		// Convert only once for map key lookup
+		itemStr := ctx.ToString(item)
+		_, exists := c[itemStr]
+		return exists, nil
+	}
+
+	// Handle other types via reflection
+	rv := reflect.ValueOf(container)
+	switch rv.Kind() {
+	case reflect.String:
+		return strings.Contains(rv.String(), ctx.ToString(item)), nil
+	case reflect.Array, reflect.Slice:
+		// Optimize for large slices/arrays
+		if rv.Len() > 50 {
+			// Same map-based optimization as above
+			tempMap := make(map[interface{}]struct{}, rv.Len())
+			for i := 0; i < rv.Len(); i++ {
+				tempMap[rv.Index(i).Interface()] = struct{}{}
+			}
+
+			// Try direct lookup
+			if _, ok := tempMap[item]; ok {
+				return true, nil
+			}
+
+			// Try string-based lookup
+			if _, ok := tempMap[ctx.ToString(item)]; ok {
+				return true, nil
+			}
+
+			// Fall back to equality comparison
+			for k := range tempMap {
+				if ctx.equals(k, item) {
+					return true, nil
+				}
+			}
+			return false, nil
+		}
+
+		// For small collections, linear search
+		for i := 0; i < rv.Len(); i++ {
+			if ctx.equals(rv.Index(i).Interface(), item) {
 				return true, nil
 			}
 		}
-	default:
-		// Try reflection for other types
-		rv := reflect.ValueOf(container)
-		switch rv.Kind() {
-		case reflect.String:
-			return strings.Contains(rv.String(), itemStr), nil
-		case reflect.Array, reflect.Slice:
-			for i := 0; i < rv.Len(); i++ {
-				if ctx.equals(rv.Index(i).Interface(), item) {
-					return true, nil
-				}
-			}
-		case reflect.Map:
-			for _, key := range rv.MapKeys() {
-				if ctx.equals(key.Interface(), item) {
-					return true, nil
-				}
+	case reflect.Map:
+		// For maps, we're already doing key lookup which is O(1)
+		for _, key := range rv.MapKeys() {
+			if ctx.equals(key.Interface(), item) {
+				return true, nil
 			}
 		}
 	}

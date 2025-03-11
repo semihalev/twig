@@ -100,6 +100,13 @@ func LogVerbose(msg string, args ...interface{}) {
 	}
 }
 
+// LogDebug logs debugging information when debug mode is enabled
+func LogDebug(msg string, args ...interface{}) {
+	if debugger.enabled {
+		debugger.logger.Printf("DEBUG:%s", fmt.Sprintf(msg, args...))
+	}
+}
+
 // StartTrace begins a trace of template rendering
 func StartTrace(templateName string) func() {
 	if !debugger.enabled {

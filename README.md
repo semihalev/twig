@@ -28,6 +28,7 @@
 - [Debugging and Error Handling](#debugging-and-error-handling)
 - [String Escape Sequences](#string-escape-sequences)
 - [Whitespace Handling](#whitespace-handling)
+- [Range Function with Negative Steps](#range-function-with-negative-steps)
 - [Performance](#performance)
 - [Examples](#examples)
 - [Template Compilation](#template-compilation)
@@ -49,7 +50,7 @@
 - Extensible with filters, functions, tests, and operators
 - Multiple loader types (filesystem, in-memory, compiled)
 - Template compilation for maximum performance
-- Whitespace control features (trim modifiers, spaceless tag)
+- Whitespace control features (trim modifiers)
 - Compatible with Go's standard library interfaces
 - Memory pooling for improved performance
 - Attribute caching to reduce reflection overhead
@@ -370,6 +371,29 @@ if err != nil {
 }
 ```
 
+## Range Function with Negative Steps
+
+When using the range function with negative step values, there's a tokenizer limitation. Direct usage of negative literals doesn't work:
+
+```twig
+{# This doesn't work directly #}
+{% for i in range(5, 1, -1) %}
+  {{ i }}  
+{% endfor %}
+```
+
+Instead, use a variable for the negative step value:
+
+```twig
+{# Working version with a variable #}
+{% set step = -1 %}
+{% for i in range(5, 1, step) %}
+  {{ i }}  {# Outputs: 5 4 3 2 #}
+{% endfor %}
+```
+
+This is a current limitation of the tokenizer which treats the minus sign (`-`) and number as separate tokens.
+
 ## String Escape Sequences
 
 Twig supports standard string escape sequences to include special characters in string literals:
@@ -395,43 +419,27 @@ This is particularly useful in JavaScript blocks or when you need to include lit
 
 ## Whitespace Handling
 
-Twig templates can have significant whitespace that affects the rendered output. This implementation supports several mechanisms for controlling whitespace:
+Twig templates can have significant whitespace that affects the rendered output. This implementation supports the following mechanism for controlling whitespace:
 
-### Whitespace Control Features
+### Whitespace Control
 
-1. **Whitespace Control Modifiers**
-   
-   The whitespace control modifiers (`-` character) allow you to trim whitespace around tags:
-   
-   ```twig
-   <div>
-       {{- greeting -}}     {# Removes whitespace before and after #}
-   </div>
-   ```
-   
-   Using these modifiers:
-   - `{{- ... }}`: Removes whitespace before the variable output
-   - `{{ ... -}}`: Removes whitespace after the variable output
-   - `{{- ... -}}`: Removes whitespace both before and after
-   - `{%- ... %}`: Removes whitespace before the block tag
-   - `{% ... -%}`: Removes whitespace after the block tag
-   - `{%- ... -%}`: Removes whitespace both before and after
+The whitespace control modifiers (`-` character) allow you to trim whitespace around tags:
 
-2. **Spaceless Tag**
-   
-   The `spaceless` tag removes whitespace between HTML tags (but preserves whitespace within text content):
-   
-   ```twig
-   {% spaceless %}
-       <div>
-           <strong>Whitespace is removed between HTML tags</strong>
-       </div>
-   {% endspaceless %}
-   ```
-   
-   This produces: `<div><strong>Whitespace is removed between HTML tags</strong></div>`
+```twig
+<div>
+    {{- greeting -}}     {# Removes whitespace before and after #}
+</div>
+```
 
-These features help you create cleaner output, especially when generating HTML with proper indentation in templates but needing compact output for production.
+Using these modifiers:
+- `{{- ... }}`: Removes whitespace before the variable output
+- `{{ ... -}}`: Removes whitespace after the variable output
+- `{{- ... -}}`: Removes whitespace both before and after
+- `{%- ... %}`: Removes whitespace before the block tag
+- `{% ... -%}`: Removes whitespace after the block tag
+- `{%- ... -%}`: Removes whitespace both before and after
+
+This feature helps you create cleaner output, especially when generating HTML with proper indentation in templates but needing compact output for production.
 
 ## Performance
 

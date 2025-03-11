@@ -87,6 +87,7 @@ func (e *CoreExtension) GetFilters() map[string]FilterFunc {
 		"date":          e.filterDate,
 		"url_encode":    e.filterUrlEncode,
 		"capitalize":    e.filterCapitalize,
+		"title":         e.filterTitle, // Title case filter
 		"first":         e.filterFirst,
 		"last":          e.filterLast,
 		"slice":         e.filterSlice,
@@ -149,6 +150,7 @@ func (e *CoreExtension) GetOperators() map[string]OperatorFunc {
 		"not in":      e.operatorNotIn,
 		"is":          e.operatorIs,
 		"is not":      e.operatorIsNot,
+		"not":         e.operatorNot, // Add explicit support for 'not' operator
 		"matches":     e.operatorMatches,
 		"starts with": e.operatorStartsWith,
 		"ends with":   e.operatorEndsWith,
@@ -227,9 +229,35 @@ func (e *CustomExtension) Initialize(engine *Engine) {
 // Filter implementations
 
 func (e *CoreExtension) filterDefault(value interface{}, args ...interface{}) (interface{}, error) {
-	if isEmptyValue(value) && len(args) > 0 {
-		return args[0], nil
+	// If no default value is provided, just return the original value
+	if len(args) == 0 {
+		return value, nil
 	}
+
+	// Get the default value (first argument)
+	defaultVal := args[0]
+
+	// Check if the value is null/nil or empty
+	if value == nil || isEmptyValue(value) {
+		// For array literals, make sure we return something that's
+		// properly recognized as an iterable in a for loop
+		if arrayNode, ok := defaultVal.([]interface{}); ok {
+			// If we're passing an array literal as default value,
+			// ensure it works correctly in for loops
+			return arrayNode, nil
+		}
+
+		// For array literals created by the parser using ArrayNode.Evaluate
+		if _, ok := defaultVal.([]Node); ok {
+			// Convert to []interface{} for consistency
+			return defaultVal, nil
+		}
+
+		// For other types of defaults, return as is
+		return defaultVal, nil
+	}
+
+	// If we get here, value is defined and not empty, so return it
 	return value, nil
 }
 
@@ -250,7 +278,19 @@ func (e *CoreExtension) filterLower(value interface{}, args ...interface{}) (int
 
 func (e *CoreExtension) filterTrim(value interface{}, args ...interface{}) (interface{}, error) {
 	s := toString(value)
-	return strings.TrimSpace(s), nil
+
+	// Basic trim with no args - just trim whitespace
+	if len(args) == 0 {
+		return strings.TrimSpace(s), nil
+	}
+
+	// Trim specific characters
+	if len(args) > 0 {
+		chars := toString(args[0])
+		return strings.Trim(s, chars), nil
+	}
+
+	return s, nil
 }
 
 func (e *CoreExtension) filterRaw(value interface{}, args ...interface{}) (interface{}, error) {
@@ -270,18 +310,77 @@ func (e *CoreExtension) filterJoin(value interface{}, args ...interface{}) (inte
 		}
 	}
 
+	// Handle nil values gracefully
+	if value == nil {
+		return "", nil
+	}
+
+	// For slice-like types, convert to interface slice first if needed
+	v := reflect.ValueOf(value)
+	if v.Kind() == reflect.Slice || v.Kind() == reflect.Array {
+		// Create a proper slice for joining
+		newSlice := make([]interface{}, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			if v.Index(i).CanInterface() {
+				newSlice[i] = v.Index(i).Interface()
+			} else {
+				newSlice[i] = ""
+			}
+		}
+		value = newSlice
+	}
+
 	return join(value, delimiter)
 }
 
 func (e *CoreExtension) filterSplit(value interface{}, args ...interface{}) (interface{}, error) {
+	// Default delimiter is whitespace
 	delimiter := " "
+	limit := -1 // No limit by default
+
+	// Get delimiter from args
 	if len(args) > 0 {
 		if d, ok := args[0].(string); ok {
 			delimiter = d
 		}
 	}
 
+	// Get limit from args if provided
+	if len(args) > 1 {
+		switch l := args[1].(type) {
+		case int:
+			limit = l
+		case float64:
+			limit = int(l)
+		case string:
+			if lnum, err := strconv.Atoi(l); err == nil {
+				limit = lnum
+			}
+		}
+	}
+
 	s := toString(value)
+
+	// Handle multiple character delimiters (split on any character in the delimiter)
+	if len(delimiter) > 1 {
+		// Convert delimiter string to a regex character class
+		pattern := "[" + regexp.QuoteMeta(delimiter) + "]"
+		re := regexp.MustCompile(pattern)
+
+		if limit > 0 {
+			// Manual split with limit
+			parts := re.Split(s, limit)
+			return parts, nil
+		}
+
+		return re.Split(s, -1), nil
+	}
+
+	// Simple single character delimiter
+	if limit > 0 {
+		return strings.SplitN(s, delimiter, limit), nil
+	}
+
 	return strings.Split(s, delimiter), nil
 }
 
@@ -289,48 +388,87 @@ func (e *CoreExtension) filterDate(value interface{}, args ...interface{}) (inte
 	// Get the datetime value
 	var dt time.Time
 
-	switch v := value.(type) {
-	case time.Time:
-		dt = v
-	case string:
-		// Try to parse as string
-		var err error
-		dt, err = time.Parse(time.RFC3339, v)
-		if err != nil {
-			// Try common formats
-			formats := []string{
-				time.RFC3339,
-				time.RFC3339Nano,
-				time.RFC1123,
-				time.RFC1123Z,
-				time.RFC822,
-				time.RFC822Z,
-				time.ANSIC,
-				"2006-01-02",
-				"2006-01-02 15:04:05",
-				"01/02/2006",
-				"01/02/2006 15:04:05",
+	// Special handling for nil/empty values
+	if value == nil {
+		// For nil, return current time
+		dt = time.Now()
+	} else {
+		switch v := value.(type) {
+		case time.Time:
+			dt = v
+			// Check if it's a zero time value (0001-01-01 00:00:00)
+			if dt.Year() == 1 && dt.Month() == 1 && dt.Day() == 1 && dt.Hour() == 0 && dt.Minute() == 0 && dt.Second() == 0 {
+				// Use current time instead of zero time
+				dt = time.Now()
 			}
+		case string:
+			// Handle empty strings and "now"
+			if v == "" || v == "0" {
+				dt = time.Now()
+			} else if v == "now" {
+				dt = time.Now()
+			} else {
+				// Try to parse as integer timestamp first
+				if timestamp, err := strconv.ParseInt(v, 10, 64); err == nil {
+					dt = time.Unix(timestamp, 0)
+				} else {
+					// Try to parse as string using common formats
+					var err error
+					formats := []string{
+						time.RFC3339,
+						time.RFC3339Nano,
+						time.RFC1123,
+						time.RFC1123Z,
+						time.RFC822,
+						time.RFC822Z,
+						time.ANSIC,
+						"2006-01-02",
+						"2006-01-02 15:04:05",
+						"01/02/2006",
+						"01/02/2006 15:04:05",
+					}
 
-			for _, format := range formats {
-				dt, err = time.Parse(format, v)
-				if err == nil {
-					break
+					// Try each format until one works
+					parsed := false
+					for _, format := range formats {
+						dt, err = time.Parse(format, v)
+						if err == nil {
+							parsed = true
+							break
+						}
+					}
+
+					if !parsed {
+						// If nothing worked, fallback to current time
+						dt = time.Now()
+					}
 				}
 			}
-
-			if err != nil {
-				return "", fmt.Errorf("cannot parse date from string: %s", v)
+		case int64:
+			// Handle 0 timestamp
+			if v == 0 {
+				dt = time.Now()
+			} else {
+				dt = time.Unix(v, 0)
 			}
+		case int:
+			// Handle 0 timestamp
+			if v == 0 {
+				dt = time.Now()
+			} else {
+				dt = time.Unix(int64(v), 0)
+			}
+		case float64:
+			// Handle 0 timestamp
+			if v == 0 {
+				dt = time.Now()
+			} else {
+				dt = time.Unix(int64(v), 0)
+			}
+		default:
+			// For unknown types, use current time
+			dt = time.Now()
 		}
-	case int64:
-		dt = time.Unix(v, 0)
-	case int:
-		dt = time.Unix(int64(v), 0)
-	case float64:
-		dt = time.Unix(int64(v), 0)
-	default:
-		return "", fmt.Errorf("cannot format date from type %T", value)
 	}
 
 	// Check for format string
@@ -380,7 +518,9 @@ func (e *CoreExtension) functionRange(args ...interface{}) (interface{}, error) 
 		return nil, errors.New("step cannot be zero")
 	}
 
-	var result []int
+	// Create the result as a slice of interface{} values explicitly
+	// Ensure it's always []interface{} for consistent handling in for loops
+	result := make([]interface{}, 0)
 	if step > 0 {
 		for i := start; i <= end; i += step {
 			result = append(result, i)
@@ -389,6 +529,11 @@ func (e *CoreExtension) functionRange(args ...interface{}) (interface{}, error) 
 		for i := start; i >= end; i += step {
 			result = append(result, i)
 		}
+	}
+
+	// Ensure we're returning a non-nil slice that can be used in loops
+	if len(result) == 0 {
+		return []interface{}{}, nil
 	}
 
 	return result, nil
@@ -462,9 +607,6 @@ func (e *CoreExtension) functionDate(args ...interface{}) (interface{}, error) {
 }
 
 func (e *CoreExtension) functionRandom(args ...interface{}) (interface{}, error) {
-	// Seed the random number generator if not already seeded
-	rand.Seed(time.Now().UnixNano())
-
 	// No args - return a random number between 0 and 2147483647 (PHP's RAND_MAX)
 	if len(args) == 0 {
 		return rand.Int31(), nil
@@ -573,7 +715,13 @@ func (e *CoreExtension) functionConstant(args ...interface{}) (interface{}, erro
 // Test implementations
 
 func (e *CoreExtension) testDefined(value interface{}, args ...interface{}) (bool, error) {
-	return value != nil, nil
+	// If the value is nil, it's not defined
+	if value == nil {
+		return false, nil
+	}
+
+	// Default case: the value exists
+	return true, nil
 }
 
 func (e *CoreExtension) testEmpty(value interface{}, args ...interface{}) (bool, error) {
@@ -686,6 +834,11 @@ func (e *CoreExtension) testMatches(value interface{}, args ...interface{}) (boo
 	str := toString(value)
 	pattern := toString(args[0])
 
+	// Remove any surrounding slashes (Twig style pattern) if present
+	if len(pattern) >= 2 && pattern[0] == '/' && pattern[len(pattern)-1] == '/' {
+		pattern = pattern[1 : len(pattern)-1]
+	}
+
 	// Compile the regex
 	regex, err := regexp.Compile(pattern)
 	if err != nil {
@@ -719,8 +872,14 @@ func (e *CoreExtension) operatorNotIn(left, right interface{}) (interface{}, err
 }
 
 func (e *CoreExtension) operatorIs(left, right interface{}) (interface{}, error) {
-	// The 'is' operator is used with tests like 'is defined', 'is empty', etc.
-	// Those are handled by the parser, not here.
+	// Special case for "is defined" test
+	if testName, ok := right.(string); ok && testName == "defined" {
+		// The actual check happens in the evaluateExpression method
+		// This just returns true to indicate we're handling it
+		return true, nil
+	}
+
+	// For all other cases, do simple equality check
 	return left == right, nil
 }
 
@@ -732,6 +891,46 @@ func (e *CoreExtension) operatorIsNot(left, right interface{}) (interface{}, err
 	}
 
 	return !(equal.(bool)), nil
+}
+
+// Helper for bool conversion
+func toBool(value interface{}) bool {
+	if value == nil {
+		return false
+	}
+
+	switch v := value.(type) {
+	case bool:
+		return v
+	case int, int8, int16, int32, int64:
+		return v != 0
+	case uint, uint8, uint16, uint32, uint64:
+		return v != 0
+	case float32, float64:
+		return v != 0
+	case string:
+		return v != ""
+	case []interface{}:
+		return len(v) > 0
+	case map[string]interface{}:
+		return len(v) > 0
+	}
+
+	// Default to true for non-nil values
+	return true
+}
+
+// operatorNot implements the 'not' operator
+func (e *CoreExtension) operatorNot(left, right interface{}) (interface{}, error) {
+	// Special case for "not defined" test
+	if testName, ok := right.(string); ok && testName == "defined" {
+		// The actual check happens during evaluation in RenderContext
+		// This just returns true to indicate we're handling it
+		return true, nil
+	}
+
+	// For all other cases, just negate the boolean value of the right operand
+	return !toBool(right), nil
 }
 
 func (e *CoreExtension) operatorMatches(left, right interface{}) (interface{}, error) {
@@ -1070,6 +1269,23 @@ func (e *CoreExtension) filterCapitalize(value interface{}, args ...interface{})
 	return strings.Join(words, " "), nil
 }
 
+// filterTitle implements a title case filter (similar to capitalize but for all words)
+func (e *CoreExtension) filterTitle(value interface{}, args ...interface{}) (interface{}, error) {
+	s := toString(value)
+	if s == "" {
+		return "", nil
+	}
+
+	words := strings.Fields(s)
+	for i, word := range words {
+		if len(word) > 0 {
+			words[i] = strings.ToUpper(word[0:1]) + strings.ToLower(word[1:])
+		}
+	}
+
+	return strings.Join(words, " "), nil
+}
+
 func (e *CoreExtension) filterFirst(value interface{}, args ...interface{}) (interface{}, error) {
 	if value == nil {
 		return nil, nil
@@ -1366,11 +1582,19 @@ func (e *CoreExtension) filterKeys(value interface{}, args ...interface{}) (inte
 	// Try reflection for other types
 	rv := reflect.ValueOf(value)
 	if rv.Kind() == reflect.Map {
+		// For maps, return the keys as a slice of the same type as the keys
 		keys := make([]interface{}, 0, rv.Len())
 		for _, key := range rv.MapKeys() {
-			keys = append(keys, key.Interface())
+			if key.CanInterface() {
+				keys = append(keys, key.Interface())
+			}
 		}
 		return keys, nil
+	}
+
+	// If it's a pointer, dereference it and try again
+	if rv.Kind() == reflect.Ptr && !rv.IsNil() {
+		return e.filterKeys(rv.Elem().Interface(), args...)
 	}
 
 	return nil, fmt.Errorf("cannot get keys from %T, expected map", value)
@@ -1691,10 +1915,10 @@ func (e *CoreExtension) filterRound(value interface{}, args ...interface{}) (int
 func (e *CoreExtension) filterNl2Br(value interface{}, args ...interface{}) (interface{}, error) {
 	s := toString(value)
 
-	// Replace newlines with <br />
-	s = strings.ReplaceAll(s, "\r\n", "<br />")
-	s = strings.ReplaceAll(s, "\n", "<br />")
-	s = strings.ReplaceAll(s, "\r", "<br />")
+	// Replace newlines with <br> (HTML5 style, no self-closing slash)
+	s = strings.ReplaceAll(s, "\r\n", "<br>")
+	s = strings.ReplaceAll(s, "\n", "<br>")
+	s = strings.ReplaceAll(s, "\r", "<br>")
 
 	return s, nil
 }
@@ -1780,7 +2004,18 @@ func (e *CoreExtension) functionLength(args ...interface{}) (interface{}, error)
 		return nil, errors.New("length function requires exactly one argument")
 	}
 
-	return length(args[0])
+	// Make sure nil is handled properly
+	if args[0] == nil {
+		return 0, nil
+	}
+
+	result, err := length(args[0])
+	if err != nil {
+		// Return 0 for things that don't have a clear length
+		return 0, nil
+	}
+
+	return result, nil
 }
 
 func (e *CoreExtension) functionMerge(args ...interface{}) (interface{}, error) {

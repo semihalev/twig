@@ -1,5 +1,3 @@
-//go:generate go run tools/lexgen/main.go -output gen
-//go:generate go run tools/parsegen/main.go -output gen
 package twig
 
 import (
@@ -38,35 +36,29 @@ type Template struct {
 
 // Environment holds configuration and context for template rendering
 type Environment struct {
-	globals           map[string]interface{}
-	filters           map[string]FilterFunc
-	functions         map[string]FunctionFunc
-	tests             map[string]TestFunc
-	operators         map[string]OperatorFunc
-	extensions        []Extension
-	cache             bool
-	autoescape        bool
-	debug             bool
-	sandbox           bool
-	preserveWhitespace bool // Controls whether whitespace is preserved in HTML
-	prettyOutputHTML   bool // Controls whether to format HTML with proper spacing
-	preserveAttributes bool // Controls whether HTML attributes are properly quoted and spaced
+	globals    map[string]interface{}
+	filters    map[string]FilterFunc
+	functions  map[string]FunctionFunc
+	tests      map[string]TestFunc
+	operators  map[string]OperatorFunc
+	extensions []Extension
+	cache      bool
+	autoescape bool
+	debug      bool
+	sandbox    bool
 }
 
 // New creates a new Twig engine instance
 func New() *Engine {
 	env := &Environment{
-		globals:           make(map[string]interface{}),
-		filters:           make(map[string]FilterFunc),
-		functions:         make(map[string]FunctionFunc),
-		tests:             make(map[string]TestFunc),
-		operators:         make(map[string]OperatorFunc),
-		autoescape:        true,
-		cache:             true,  // Enable caching by default
-		debug:             false, // Disable debug mode by default
-		preserveWhitespace: false, // Disable full whitespace preservation by default
-		prettyOutputHTML:   true,  // Enable pretty HTML output by default
-		preserveAttributes: true,  // Enable proper attribute formatting by default
+		globals:    make(map[string]interface{}),
+		filters:    make(map[string]FilterFunc),
+		functions:  make(map[string]FunctionFunc),
+		tests:      make(map[string]TestFunc),
+		operators:  make(map[string]OperatorFunc),
+		autoescape: true,
+		cache:      true,  // Enable caching by default
+		debug:      false, // Disable debug mode by default
 	}
 
 	engine := &Engine{
@@ -203,7 +195,10 @@ func (e *Engine) Load(name string) (*Template, error) {
 	// Only check the cache if caching is enabled
 	if e.environment.cache {
 		e.mu.RLock()
-		if tmpl, ok := e.templates[name]; ok {
+		tmpl, ok := e.templates[name]
+
+		// If template exists in cache
+		if ok {
 			// If auto-reload is disabled, return the cached template immediately under read lock
 			if !e.autoReload {
 				defer e.mu.RUnlock()
@@ -211,23 +206,28 @@ func (e *Engine) Load(name string) (*Template, error) {
 			}
 
 			// If auto-reload is enabled, check if the template has been modified
-			// We need to keep the read lock while checking if reload is needed
+			needsReload := false
+
 			if tmpl.loader != nil {
 				// Check if the loader supports timestamp checking
 				if tsLoader, ok := tmpl.loader.(TimestampAwareLoader); ok {
 					// Get the current modification time
 					currentModTime, err := tsLoader.GetModifiedTime(name)
-					if err == nil && currentModTime <= tmpl.lastModified {
-						// Template hasn't been modified, use the cached version
-						defer e.mu.RUnlock()
-						return tmpl, nil
+					if err != nil || currentModTime > tmpl.lastModified {
+						needsReload = true
 					}
 				}
 			}
-			e.mu.RUnlock()
-		} else {
-			e.mu.RUnlock()
+
+			// If no reload needed, return cached template
+			if !needsReload {
+				defer e.mu.RUnlock()
+				return tmpl, nil
+			}
 		}
+
+		// Template not found in cache or needs reloading
+		e.mu.RUnlock()
 	}
 
 	// Template not in cache or cache disabled or needs reloading
@@ -345,36 +345,6 @@ func (e *Engine) IsCacheEnabled() bool {
 // IsAutoReloadEnabled returns true if auto-reload is enabled
 func (e *Engine) IsAutoReloadEnabled() bool {
 	return e.autoReload
-}
-
-// SetPreserveWhitespace enables or disables HTML whitespace preservation
-func (e *Engine) SetPreserveWhitespace(enabled bool) {
-	e.environment.preserveWhitespace = enabled
-}
-
-// IsPreserveWhitespaceEnabled returns true if HTML whitespace preservation is enabled
-func (e *Engine) IsPreserveWhitespaceEnabled() bool {
-	return e.environment.preserveWhitespace
-}
-
-// SetPrettyOutputHTML enables or disables pretty HTML output formatting
-func (e *Engine) SetPrettyOutputHTML(enabled bool) {
-	e.environment.prettyOutputHTML = enabled
-}
-
-// IsPrettyOutputHTMLEnabled returns true if pretty HTML output is enabled
-func (e *Engine) IsPrettyOutputHTMLEnabled() bool {
-	return e.environment.prettyOutputHTML
-}
-
-// SetPreserveAttributes enables or disables HTML attribute preservation
-func (e *Engine) SetPreserveAttributes(enabled bool) {
-	e.environment.preserveAttributes = enabled
-}
-
-// IsPreserveAttributesEnabled returns true if HTML attribute preservation is enabled
-func (e *Engine) IsPreserveAttributesEnabled() bool {
-	return e.environment.preserveAttributes
 }
 
 // GetCachedTemplateCount returns the number of templates in the cache
@@ -600,6 +570,9 @@ func (t *Template) Render(context map[string]interface{}) (string, error) {
 func (t *Template) RenderTo(w io.Writer, context map[string]interface{}) error {
 	// Get a render context from the pool
 	ctx := NewRenderContext(t.env, context, t.engine)
+
+	// Debug logging only when enabled
+	LogDebug("Rendering template '%s'", t.name)
 
 	// Ensure the context is returned to the pool
 	defer ctx.Release()
