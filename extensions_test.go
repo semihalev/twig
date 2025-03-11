@@ -175,7 +175,6 @@ func TestOrganizedCustomFunctions(t *testing.T) {
 
 // TestMacros tests macro functionality
 func TestMacros(t *testing.T) {
-	t.Skip("Temporarily skip failing macro tests - implementation has changed")
 	engine := New()
 
 	// Create a template with a macro

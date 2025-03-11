@@ -523,20 +523,20 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		}
 
 		return ctx.getAttribute(obj, attrStr)
-		
+
 	case *GetItemNode:
 		// Evaluate the container (array, slice, map)
 		container, err := ctx.EvaluateExpression(n.node)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Evaluate the item index/key
 		index, err := ctx.EvaluateExpression(n.item)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		return ctx.getItem(container, index)
 
 	case *BinaryNode:
@@ -614,22 +614,73 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 			if err != nil {
 				return nil, err
 			}
-			
+
 			// Convert key to string
 			key := ctx.ToString(keyVal)
-			
+
 			// Evaluate the value
 			val, err := ctx.EvaluateExpression(v)
 			if err != nil {
 				return nil, err
 			}
-			
+
 			// Store in the map
 			result[key] = val
 		}
 		return result, nil
 
 	case *FunctionNode:
+		// Check if this is a module.function() call (moduleExpr will be non-nil)
+		if n.moduleExpr != nil {
+			if IsDebugEnabled() && debugger.level >= DebugVerbose {
+				LogVerbose("Handling module.function() call with module expression")
+			}
+
+			// Evaluate the module expression first
+			moduleObj, err := ctx.EvaluateExpression(n.moduleExpr)
+			if err != nil {
+				return nil, err
+			}
+
+			// Evaluate all arguments
+			args := make([]interface{}, len(n.args))
+			for i, arg := range n.args {
+				val, err := ctx.EvaluateExpression(arg)
+				if err != nil {
+					return nil, err
+				}
+				args[i] = val
+			}
+
+			// Check if moduleObj is a map that contains macros
+			if moduleMap, ok := moduleObj.(map[string]interface{}); ok {
+				if macroObj, ok := moduleMap[n.name]; ok {
+					if IsDebugEnabled() && debugger.level >= DebugVerbose {
+						LogVerbose("Found macro '%s' in module map", n.name)
+					}
+
+					// If the macro is a MacroNode, return a callable to render it
+					if macroNode, ok := macroObj.(*MacroNode); ok {
+						// Return a callable that can be rendered later
+						return func(w io.Writer) error {
+							return macroNode.CallMacro(w, ctx, args...)
+						}, nil
+					}
+				}
+			}
+
+			// Fallback - try calling it like a regular function
+			if IsDebugEnabled() && debugger.level >= DebugVerbose {
+				LogVerbose("Fallback - calling '%s' as a regular function", n.name)
+			}
+			result, err := ctx.CallFunction(n.name, args)
+			if err != nil {
+				return nil, err
+			}
+
+			return result, nil
+		}
+
 		// Check if it's a macro call
 		if macro, ok := ctx.GetMacro(n.name); ok {
 			// Evaluate arguments
@@ -852,11 +903,11 @@ func (ctx *RenderContext) getItem(container, index interface{}) (interface{}, er
 	if container == nil {
 		return nil, nil
 	}
-	
+
 	// Convert numeric indices to int for consistent handling
 	idx, _ := ctx.toNumber(index)
 	intIndex := int(idx)
-	
+
 	// Handle different container types
 	switch c := container.(type) {
 	case []interface{}:
@@ -865,7 +916,7 @@ func (ctx *RenderContext) getItem(container, index interface{}) (interface{}, er
 			return nil, fmt.Errorf("array index out of bounds: %d", intIndex)
 		}
 		return c[intIndex], nil
-		
+
 	case map[string]interface{}:
 		// Try string key
 		if strKey, ok := index.(string); ok {
@@ -873,19 +924,19 @@ func (ctx *RenderContext) getItem(container, index interface{}) (interface{}, er
 				return value, nil
 			}
 		}
-		
+
 		// Try numeric key as string
 		strKey := ctx.ToString(index)
 		if value, exists := c[strKey]; exists {
 			return value, nil
 		}
-		
+
 		return nil, nil // Nil for missing keys
-		
+
 	default:
 		// Use reflection for other types
 		v := reflect.ValueOf(container)
-		
+
 		switch v.Kind() {
 		case reflect.Slice, reflect.Array:
 			// Check bounds
@@ -893,15 +944,15 @@ func (ctx *RenderContext) getItem(container, index interface{}) (interface{}, er
 				return nil, fmt.Errorf("array index out of bounds: %d", intIndex)
 			}
 			return v.Index(intIndex).Interface(), nil
-			
+
 		case reflect.Map:
 			// Try to find the key
 			var mapKey reflect.Value
-			
+
 			// Convert the index to the map's key type if possible
 			keyType := v.Type().Key()
 			indexValue := reflect.ValueOf(index)
-			
+
 			if indexValue.Type().ConvertibleTo(keyType) {
 				mapKey = indexValue.Convert(keyType)
 			} else {
@@ -913,14 +964,14 @@ func (ctx *RenderContext) getItem(container, index interface{}) (interface{}, er
 					return nil, nil // Key type mismatch
 				}
 			}
-			
+
 			mapValue := v.MapIndex(mapKey)
 			if mapValue.IsValid() {
 				return mapValue.Interface(), nil
 			}
 		}
 	}
-	
+
 	return nil, nil // Default nil for non-indexable types
 }
 
@@ -1225,12 +1276,12 @@ func (ctx *RenderContext) evaluateBinaryOp(operator string, left, right interfac
 
 		// Handle escaped character sequences
 		pattern = strings.ReplaceAll(pattern, "\\\\", "\\")
-		
+
 		// Special handling for regex character classes
 		// When working with backslashes in strings, we need 2 levels of escaping
 		// 1. In Go source, \d is written as \\d
 		// 2. After string processing, we need to handle it specially
-		pattern = strings.ReplaceAll(pattern, "\\d", "[0-9]") // digits
+		pattern = strings.ReplaceAll(pattern, "\\d", "[0-9]")        // digits
 		pattern = strings.ReplaceAll(pattern, "\\w", "[a-zA-Z0-9_]") // word chars
 		pattern = strings.ReplaceAll(pattern, "\\s", "[ \\t\\n\\r]") // whitespace
 

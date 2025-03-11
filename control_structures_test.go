@@ -112,7 +112,7 @@ func TestSimpleControlStructures(t *testing.T) {
 			name:     "For loop with map",
 			source:   "{% for key, value in data %}{{ key }}:{{ value }};{% endfor %}",
 			context:  map[string]interface{}{"data": map[string]interface{}{"a": 1, "b": 2, "c": 3}},
-			expected: "a:1;b:2;c:3;",  // This is just a reference; actual map iteration order is checked separately
+			expected: "a:1;b:2;c:3;", // This is just a reference; actual map iteration order is checked separately
 		},
 		{
 			name:     "For loop with loop variable",

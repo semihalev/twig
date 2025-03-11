@@ -2,6 +2,7 @@ package twig
 
 import (
 	"fmt"
+	"strings"
 )
 
 // ApplyFilter applies a filter to a value
@@ -17,6 +18,23 @@ func (ctx *RenderContext) ApplyFilter(name string, value interface{}, args ...in
 			// We've moved the script-specific string handling to PrintNode.Render
 			return result, nil
 		}
+	}
+
+	// Handle built-in filters for macro compatibility
+	switch name {
+	case "e", "escape":
+		// Simple HTML escape
+		return strings.Replace(
+			strings.Replace(
+				strings.Replace(
+					strings.Replace(
+						strings.Replace(
+							ctx.ToString(value),
+							"&", "&amp;", -1),
+						"<", "&lt;", -1),
+					">", "&gt;", -1),
+				"\"", "&quot;", -1),
+			"'", "&#39;", -1), nil
 	}
 
 	return nil, fmt.Errorf("filter '%s' not found", name)

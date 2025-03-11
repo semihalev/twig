@@ -633,7 +633,7 @@ func TestOrganizedCoreFunctions(t *testing.T) {
 			name:     "Range function",
 			source:   "{% for i in range(1, 5) %}{{ i }}{% endfor %}",
 			context:  nil,
-			expected: "12345",  // Inclusive end behavior
+			expected: "12345", // Inclusive end behavior
 		},
 		{
 			name:     "Min function",

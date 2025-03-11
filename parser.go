@@ -768,7 +768,7 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 		// If not a function call, it's a regular variable
 		var result Node = NewVariableNode(varName, varLine)
 
-		// Check for attribute access (obj.attr)
+		// Check for attribute access (obj.attr) or method calls (obj.method())
 		for p.tokenIndex < len(p.tokens) &&
 			p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
 			p.tokens[p.tokenIndex].Value == "." {
@@ -781,8 +781,76 @@ func (p *Parser) parseSimpleExpression() (Node, error) {
 
 			attrName := p.tokens[p.tokenIndex].Value
 			attrNode := NewLiteralNode(attrName, p.tokens[p.tokenIndex].Line)
-			result = NewGetAttrNode(result, attrNode, varLine)
 			p.tokenIndex++
+
+			// Check if this is a method call like (module.method())
+			if p.tokenIndex < len(p.tokens) &&
+				p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
+				p.tokens[p.tokenIndex].Value == "(" {
+
+				if IsDebugEnabled() && debugger.level >= DebugVerbose {
+					LogVerbose("Detected module.method call: %s.%s(...)", varName, attrName)
+				}
+
+				// This is a method call with the method stored in attrName
+				// We'll use the moduleExpr field in FunctionNode to store the module expression
+
+				// Parse the arguments
+				p.tokenIndex++ // Skip opening parenthesis
+
+				// Parse arguments
+				var args []Node
+
+				// If there are arguments (not empty parentheses)
+				if p.tokenIndex < len(p.tokens) &&
+					!(p.tokenIndex < len(p.tokens) &&
+						p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
+						p.tokens[p.tokenIndex].Value == ")") {
+
+					for {
+						// Parse each argument expression
+						argExpr, err := p.parseExpression()
+						if err != nil {
+							return nil, err
+						}
+						args = append(args, argExpr)
+
+						// Check for comma separator between arguments
+						if p.tokenIndex < len(p.tokens) &&
+							p.tokens[p.tokenIndex].Type == TOKEN_PUNCTUATION &&
+							p.tokens[p.tokenIndex].Value == "," {
+							p.tokenIndex++ // Skip comma
+							continue
+						}
+
+						// No comma, so must be end of argument list
+						break
+					}
+				}
+
+				// Expect closing parenthesis
+				if p.tokenIndex >= len(p.tokens) ||
+					p.tokens[p.tokenIndex].Type != TOKEN_PUNCTUATION ||
+					p.tokens[p.tokenIndex].Value != ")" {
+					return nil, fmt.Errorf("expected closing parenthesis after method arguments at line %d", varLine)
+				}
+				p.tokenIndex++ // Skip closing parenthesis
+
+				// Create a function call with the module expression and method name
+				result = &FunctionNode{
+					ExpressionNode: ExpressionNode{
+						exprType: ExprFunction,
+						line:     varLine,
+					},
+					name: attrName,
+					args: args,
+					// Special handling - We'll store the module in the FunctionNode
+					moduleExpr: result,
+				}
+			} else {
+				// Regular attribute access (not a method call)
+				result = NewGetAttrNode(result, attrNode, varLine)
+			}
 		}
 
 		return result, nil
@@ -1904,6 +1972,16 @@ func (p *Parser) parseDo(parser *Parser) (Node, error) {
 }
 
 func (p *Parser) parseMacro(parser *Parser) (Node, error) {
+	// Use debug logging if enabled
+	if IsDebugEnabled() && debugger.level >= DebugVerbose {
+		tokenIndex := parser.tokenIndex - 2
+		LogVerbose("Parsing macro, tokens available:")
+		for i := 0; i < 10 && tokenIndex+i < len(parser.tokens); i++ {
+			token := parser.tokens[tokenIndex+i]
+			LogVerbose("  Token %d: Type=%d, Value=%q, Line=%d", i, token.Type, token.Value, token.Line)
+		}
+	}
+
 	// Get the line number of the macro token
 	macroLine := parser.tokens[parser.tokenIndex-2].Line
 
@@ -1912,7 +1990,117 @@ func (p *Parser) parseMacro(parser *Parser) (Node, error) {
 		return nil, fmt.Errorf("expected macro name after macro keyword at line %d", macroLine)
 	}
 
+	// Special handling for incorrectly tokenized macro declarations
+	macroNameRaw := parser.tokens[parser.tokenIndex].Value
+	if IsDebugEnabled() && debugger.level >= DebugVerbose {
+		LogVerbose("Raw macro name: %s", macroNameRaw)
+	}
+
+	// Check if the name contains parentheses (incorrectly tokenized)
+	if strings.Contains(macroNameRaw, "(") {
+		// Extract the actual name before the parenthesis
+		parts := strings.SplitN(macroNameRaw, "(", 2)
+		if len(parts) == 2 {
+			macroName := parts[0]
+			paramStr := "(" + parts[1]
+			if IsDebugEnabled() && debugger.level >= DebugVerbose {
+				LogVerbose("Fixed macro name: %s", macroName)
+				LogVerbose("Parameter string: %s", paramStr)
+			}
+
+			// Parse parameters
+			var params []string
+			defaults := make(map[string]Node)
+
+			// Simple parameter parsing - split by comma
+			paramList := strings.TrimRight(paramStr[1:], ")")
+			if paramList != "" {
+				paramItems := strings.Split(paramList, ",")
+
+				for _, param := range paramItems {
+					param = strings.TrimSpace(param)
+
+					// Check for default value
+					if strings.Contains(param, "=") {
+						parts := strings.SplitN(param, "=", 2)
+						paramName := strings.TrimSpace(parts[0])
+						defaultValue := strings.TrimSpace(parts[1])
+
+						params = append(params, paramName)
+
+						// Handle quoted strings in default values
+						if (strings.HasPrefix(defaultValue, "'") && strings.HasSuffix(defaultValue, "'")) ||
+							(strings.HasPrefix(defaultValue, "\"") && strings.HasSuffix(defaultValue, "\"")) {
+							// Remove quotes
+							strValue := defaultValue[1 : len(defaultValue)-1]
+							defaults[paramName] = NewLiteralNode(strValue, macroLine)
+						} else if defaultValue == "true" {
+							defaults[paramName] = NewLiteralNode(true, macroLine)
+						} else if defaultValue == "false" {
+							defaults[paramName] = NewLiteralNode(false, macroLine)
+						} else if i, err := strconv.Atoi(defaultValue); err == nil {
+							defaults[paramName] = NewLiteralNode(i, macroLine)
+						} else {
+							// Fallback to string
+							defaults[paramName] = NewLiteralNode(defaultValue, macroLine)
+						}
+					} else {
+						params = append(params, param)
+					}
+				}
+			}
+
+			// Skip to the end of the token
+			parser.tokenIndex++
+
+			// Expect block end
+			if parser.tokenIndex >= len(parser.tokens) ||
+				(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END &&
+					parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
+				return nil, fmt.Errorf("expected block end token after macro declaration at line %d", macroLine)
+			}
+			parser.tokenIndex++
+
+			// Parse the macro body
+			bodyNodes, err := parser.parseOuterTemplate()
+			if err != nil {
+				return nil, err
+			}
+
+			// Expect endmacro tag
+			if parser.tokenIndex+1 >= len(parser.tokens) ||
+				(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_START &&
+					parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_START_TRIM) ||
+				parser.tokens[parser.tokenIndex+1].Type != TOKEN_NAME ||
+				parser.tokens[parser.tokenIndex+1].Value != "endmacro" {
+				return nil, fmt.Errorf("missing endmacro tag for macro '%s' at line %d",
+					macroName, macroLine)
+			}
+
+			// Skip {% endmacro %}
+			parser.tokenIndex += 2 // Skip {% endmacro
+
+			// Expect block end
+			if parser.tokenIndex >= len(parser.tokens) ||
+				(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END &&
+					parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
+				return nil, fmt.Errorf("expected block end token after endmacro at line %d", parser.tokens[parser.tokenIndex].Line)
+			}
+			parser.tokenIndex++
+
+			// Create the macro node
+			if IsDebugEnabled() && debugger.level >= DebugVerbose {
+				LogVerbose("Creating MacroNode with %d parameters and %d defaults", len(params), len(defaults))
+			}
+			return NewMacroNode(macroName, params, defaults, bodyNodes, macroLine), nil
+		}
+	}
+
+	// Regular parsing path
 	macroName := parser.tokens[parser.tokenIndex].Value
+	if IsDebugEnabled() && debugger.level >= DebugVerbose {
+		LogVerbose("Macro name: %s", macroName)
+	}
 	parser.tokenIndex++
 
 	// Expect opening parenthesis for parameters
@@ -1939,6 +2127,7 @@ func (p *Parser) parseMacro(parser *Parser) (Node, error) {
 			}
 
 			paramName := parser.tokens[parser.tokenIndex].Value
+			fmt.Println("DEBUG: Parameter name:", paramName)
 			params = append(params, paramName)
 			parser.tokenIndex++
 
@@ -1951,7 +2140,15 @@ func (p *Parser) parseMacro(parser *Parser) (Node, error) {
 				// Parse default value expression
 				defaultExpr, err := parser.parseExpression()
 				if err != nil {
+					fmt.Println("DEBUG: Error parsing default value:", err)
 					return nil, err
+				}
+
+				// Debug output for default value
+				if literalNode, ok := defaultExpr.(*LiteralNode); ok {
+					fmt.Printf("DEBUG: Default value for %s: %v (type %T)\n", paramName, literalNode.value, literalNode.value)
+				} else {
+					fmt.Printf("DEBUG: Default value for %s: %T\n", paramName, defaultExpr)
 				}
 
 				defaults[paramName] = defaultExpr
@@ -1978,7 +2175,9 @@ func (p *Parser) parseMacro(parser *Parser) (Node, error) {
 	parser.tokenIndex++
 
 	// Expect block end
-	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
+	if parser.tokenIndex >= len(parser.tokens) ||
+		(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END &&
+			parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
 		return nil, fmt.Errorf("expected block end token after macro declaration at line %d", macroLine)
 	}
 	parser.tokenIndex++
@@ -1991,7 +2190,8 @@ func (p *Parser) parseMacro(parser *Parser) (Node, error) {
 
 	// Expect endmacro tag
 	if parser.tokenIndex+1 >= len(parser.tokens) ||
-		parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_START ||
+		(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_START &&
+			parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_START_TRIM) ||
 		parser.tokens[parser.tokenIndex+1].Type != TOKEN_NAME ||
 		parser.tokens[parser.tokenIndex+1].Value != "endmacro" {
 		return nil, fmt.Errorf("missing endmacro tag for macro '%s' at line %d",
@@ -2002,19 +2202,76 @@ func (p *Parser) parseMacro(parser *Parser) (Node, error) {
 	parser.tokenIndex += 2 // Skip {% endmacro
 
 	// Expect block end
-	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
+	if parser.tokenIndex >= len(parser.tokens) ||
+		(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END &&
+			parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
 		return nil, fmt.Errorf("expected block end token after endmacro at line %d", parser.tokens[parser.tokenIndex].Line)
 	}
 	parser.tokenIndex++
 
 	// Create the macro node
+	if IsDebugEnabled() && debugger.level >= DebugVerbose {
+		LogVerbose("Creating MacroNode with %d parameters and %d defaults", len(params), len(defaults))
+	}
 	return NewMacroNode(macroName, params, defaults, bodyNodes, macroLine), nil
 }
 
 func (p *Parser) parseImport(parser *Parser) (Node, error) {
+	// Use debug logging if enabled
+	if IsDebugEnabled() && debugger.level >= DebugVerbose {
+		tokenIndex := parser.tokenIndex - 2
+		LogVerbose("Parsing import, tokens available:")
+		for i := 0; i < 10 && tokenIndex+i < len(parser.tokens); i++ {
+			token := parser.tokens[tokenIndex+i]
+			LogVerbose("  Token %d: Type=%d, Value=%q, Line=%d", i, token.Type, token.Value, token.Line)
+		}
+	}
+
 	// Get the line number of the import token
 	importLine := parser.tokens[parser.tokenIndex-2].Line
 
+	// Check for incorrectly tokenized import syntax
+	if parser.tokenIndex < len(parser.tokens) &&
+		parser.tokens[parser.tokenIndex].Type == TOKEN_NAME &&
+		strings.Contains(parser.tokens[parser.tokenIndex].Value, " as ") {
+
+		// Special handling for combined syntax like "path.twig as alias"
+		parts := strings.SplitN(parser.tokens[parser.tokenIndex].Value, " as ", 2)
+		if len(parts) == 2 {
+			templatePath := strings.TrimSpace(parts[0])
+			alias := strings.TrimSpace(parts[1])
+
+			if IsDebugEnabled() && debugger.level >= DebugVerbose {
+				LogVerbose("Found combined import syntax: template=%q, alias=%q", templatePath, alias)
+			}
+
+			// Create an expression node for the template path
+			var templateExpr Node
+			if strings.HasPrefix(templatePath, "\"") && strings.HasSuffix(templatePath, "\"") {
+				// It's already a quoted string
+				templateExpr = NewLiteralNode(templatePath[1:len(templatePath)-1], importLine)
+			} else {
+				// Create a string literal node
+				templateExpr = NewLiteralNode(templatePath, importLine)
+			}
+
+			// Skip to end of token
+			parser.tokenIndex++
+
+			// Expect block end
+			if parser.tokenIndex >= len(parser.tokens) ||
+				(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END &&
+					parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
+				return nil, fmt.Errorf("expected block end token after import statement at line %d", importLine)
+			}
+			parser.tokenIndex++
+
+			// Create import node
+			return NewImportNode(templateExpr, alias, importLine), nil
+		}
+	}
+
+	// Standard parsing path
 	// Get the template to import
 	templateExpr, err := parser.parseExpression()
 	if err != nil {
@@ -2038,7 +2295,9 @@ func (p *Parser) parseImport(parser *Parser) (Node, error) {
 	parser.tokenIndex++
 
 	// Expect block end
-	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
+	if parser.tokenIndex >= len(parser.tokens) ||
+		(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END &&
+			parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
 		return nil, fmt.Errorf("expected block end token after import statement at line %d", importLine)
 	}
 	parser.tokenIndex++
@@ -2115,7 +2374,9 @@ func (p *Parser) parseFrom(parser *Parser) (Node, error) {
 	}
 
 	// Expect block end
-	if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
+	if parser.tokenIndex >= len(parser.tokens) ||
+		(parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END &&
+			parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END_TRIM) {
 		return nil, fmt.Errorf("expected block end token after from import statement at line %d", fromLine)
 	}
 	parser.tokenIndex++

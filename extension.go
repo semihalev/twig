@@ -542,7 +542,7 @@ func (e *CoreExtension) functionRange(args ...interface{}) (interface{}, error) 
 	// Create the result as a slice of interface{} values explicitly
 	// Ensure it's always []interface{} for consistent handling in for loops
 	result := make([]interface{}, 0)
-	
+
 	// For compatibility with existing tests, keep the end index inclusive
 	if step > 0 {
 		// For positive step, include the end value (end is inclusive)
@@ -1684,7 +1684,7 @@ func (e *CoreExtension) filterKeys(value interface{}, args ...interface{}) (inte
 		}
 		// Sort keys for consistent output
 		sort.Strings(keys)
-		
+
 		return keys, nil
 	}
 
@@ -1803,7 +1803,7 @@ func (e *CoreExtension) filterSort(value interface{}, args ...interface{}) (inte
 		result := make([]string, len(v))
 		copy(result, v)
 		sort.Strings(result)
-		
+
 		// Convert to []interface{} for consistent type handling in for loops
 		interfaceSlice := make([]interface{}, len(result))
 		for i, val := range result {
@@ -1814,7 +1814,7 @@ func (e *CoreExtension) filterSort(value interface{}, args ...interface{}) (inte
 		result := make([]int, len(v))
 		copy(result, v)
 		sort.Ints(result)
-		
+
 		// Convert to []interface{} for consistent type handling in for loops
 		interfaceSlice := make([]interface{}, len(result))
 		for i, val := range result {
@@ -1825,7 +1825,7 @@ func (e *CoreExtension) filterSort(value interface{}, args ...interface{}) (inte
 		result := make([]float64, len(v))
 		copy(result, v)
 		sort.Float64s(result)
-		
+
 		// Convert to []interface{} for consistent type handling in for loops
 		interfaceSlice := make([]interface{}, len(result))
 		for i, val := range result {
@@ -1909,7 +1909,7 @@ func (e *CoreExtension) filterNumberFormat(value interface{}, args ...interface{
 	// Split into integer and fractional parts
 	parts := strings.Split(str, ".")
 	intPart := parts[0]
-	
+
 	// Handle negative numbers specially
 	isNegative := false
 	if strings.HasPrefix(intPart, "-") {
@@ -1929,7 +1929,7 @@ func (e *CoreExtension) filterNumberFormat(value interface{}, args ...interface{
 		}
 		intPart = buf.String()
 	}
-	
+
 	// Add back negative sign if needed
 	if isNegative {
 		intPart = "-" + intPart
@@ -2024,7 +2024,7 @@ func (e *CoreExtension) functionCycle(args ...interface{}) (interface{}, error) 
 	// The first argument should be the array of values to cycle through
 	var values []interface{}
 	var position int
-	
+
 	// Check if the first argument is an array
 	firstArg := args[0]
 	if firstArgVal := reflect.ValueOf(firstArg); firstArgVal.Kind() == reflect.Slice || firstArgVal.Kind() == reflect.Array {
@@ -2033,7 +2033,7 @@ func (e *CoreExtension) functionCycle(args ...interface{}) (interface{}, error) 
 		for i := 0; i < firstArgVal.Len(); i++ {
 			values[i] = firstArgVal.Index(i).Interface()
 		}
-		
+
 		// Position is the second argument
 		if len(args) > 1 {
 			var err error
@@ -2217,12 +2217,12 @@ func escapeHTML(s string) string {
 // filterFormat implements the format filter similar to fmt.Sprintf
 func (e *CoreExtension) filterFormat(value interface{}, args ...interface{}) (interface{}, error) {
 	formatString := toString(value)
-	
+
 	// If no args, just return the string
 	if len(args) == 0 {
 		return formatString, nil
 	}
-	
+
 	// Apply formatting
 	return fmt.Sprintf(formatString, args...), nil
 }

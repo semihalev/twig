@@ -24,6 +24,7 @@ const (
 	ExprArray
 	ExprHash
 	ExprConditional
+	ExprModuleMethod
 )
 
 // ExpressionNode represents a Twig expression
@@ -62,8 +63,9 @@ type BinaryNode struct {
 // FunctionNode represents a function call
 type FunctionNode struct {
 	ExpressionNode
-	name string
-	args []Node
+	name       string
+	args       []Node
+	moduleExpr Node // Optional module for module.function() calls
 }
 
 // FilterNode represents a filter application
@@ -221,14 +223,14 @@ func (n *VariableNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// If debug is enabled, log variable access and value
 	if IsDebugEnabled() {
 		if value == nil {
 			// Log undefined variable at error level if debug is enabled
 			message := fmt.Sprintf("Variable lookup at line %d", n.line)
 			LogError(fmt.Errorf("%w: %s", ErrUndefinedVar, n.name), message)
-			
+
 			// If in strict debug mode with error level, return an error for undefined variables
 			if debugger.level >= DebugError && ctx.engine != nil && ctx.engine.debug {
 				templateName := "unknown"

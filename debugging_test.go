@@ -125,14 +125,14 @@ func TestDebugConditionals(t *testing.T) {
 
 	// Verify debug output contains conditional evaluation info
 	output := buf.String()
-	
+
 	// Check for specific debug messages we expect to see
 	expectedMessages := []string{
 		"Evaluating 'if' condition",
 		"Condition result:",
 		"Entering 'if' block",
 	}
-	
+
 	for _, msg := range expectedMessages {
 		if !strings.Contains(output, msg) {
 			t.Errorf("Expected debug output to contain '%s', but it was not found", msg)
@@ -163,7 +163,7 @@ func TestDebugErrorReporting(t *testing.T) {
 
 	// Create a template with a syntax error rather than an undefined variable
 	// Since undefined variables don't cause errors by default in twig
-	source := "{{ 1 / 0 }}"  // Division by zero will cause an error
+	source := "{{ 1 / 0 }}" // Division by zero will cause an error
 	engine.RegisterString("debug_error", source)
 
 	// Render the template - expect an error
@@ -174,8 +174,8 @@ func TestDebugErrorReporting(t *testing.T) {
 
 	// Verify the error type and message
 	errMsg := err.Error()
-	if !strings.Contains(errMsg, "division by zero") && 
-	   !strings.Contains(errMsg, "divide by zero") {
+	if !strings.Contains(errMsg, "division by zero") &&
+		!strings.Contains(errMsg, "divide by zero") {
 		t.Errorf("Expected error message to contain division error, got: %s", errMsg)
 	}
 

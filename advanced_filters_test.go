@@ -206,7 +206,7 @@ func TestFilterCombinations(t *testing.T) {
 	// Enable debug logging
 	SetDebugLevel(DebugVerbose)
 	defer SetDebugLevel(DebugOff)
-	
+
 	engine := New()
 
 	tests := []struct {

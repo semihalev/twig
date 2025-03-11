@@ -164,6 +164,7 @@ const (
 	NodeElement
 	NodeFunction
 	NodeSpaceless
+	NodeModuleMethod
 )
 
 // RootNode represents the root of a template
@@ -215,7 +216,7 @@ func (n *IfNode) Render(w io.Writer, ctx *RenderContext) error {
 		if IsDebugEnabled() {
 			LogDebug("Evaluating 'if' condition #%d at line %d", i+1, n.line)
 		}
-		
+
 		// Evaluate the condition
 		result, err := ctx.EvaluateExpression(condition)
 		if err != nil {
@@ -237,7 +238,7 @@ func (n *IfNode) Render(w io.Writer, ctx *RenderContext) error {
 			if IsDebugEnabled() {
 				LogDebug("Entering 'if' block (condition #%d is true)", i+1)
 			}
-			
+
 			// Render all nodes in the body
 			for _, node := range n.bodies[i] {
 				err := node.Render(w, ctx)
@@ -254,7 +255,7 @@ func (n *IfNode) Render(w io.Writer, ctx *RenderContext) error {
 		if IsDebugEnabled() {
 			LogDebug("Entering 'else' block (all conditions were false)")
 		}
-		
+
 		for _, node := range n.elseBranch {
 			err := node.Render(w, ctx)
 			if err != nil {
@@ -289,13 +290,13 @@ func (n *ForNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Add debug info about the sequence node
 	if IsDebugEnabled() {
 		LogDebug("ForNode sequence node type: %T", n.sequence)
-		
+
 		// Special handling for filter nodes in for loops to aid debugging
 		if filterNode, ok := n.sequence.(*FilterNode); ok {
 			LogDebug("ForNode sequence is a FilterNode with filter: %s", filterNode.filter)
 		}
 	}
-	
+
 	// Special handling for FunctionNode with name "range" directly in for loop
 	if funcNode, ok := n.sequence.(*FunctionNode); ok && funcNode.name == "range" {
 		// Add debug output to see what's happening
@@ -350,47 +351,47 @@ func (n *ForNode) Render(w io.Writer, ctx *RenderContext) error {
 			fmt.Println("Engine or environment is nil")
 		}
 	}
-	
+
 	// Special handling for FilterNode to improve rendering in for loops
 	if filterNode, ok := n.sequence.(*FilterNode); ok {
 		if IsDebugEnabled() {
 			LogDebug("ForNode: direct processing of filter node: %s", filterNode.filter)
 		}
-		
+
 		// Get the base value first
 		baseNode, filterChain, err := ctx.DetectFilterChain(filterNode)
 		if err != nil {
 			return err
 		}
-		
+
 		// Evaluate the base value
 		baseValue, err := ctx.EvaluateExpression(baseNode)
 		if err != nil {
 			return err
 		}
-		
+
 		if IsDebugEnabled() {
 			LogDebug("ForNode: base value type: %T, filter chain length: %d", baseValue, len(filterChain))
 		}
-		
+
 		// Apply each filter in the chain
 		result := baseValue
 		for _, filter := range filterChain {
 			if IsDebugEnabled() {
 				LogDebug("ForNode: applying filter: %s", filter.name)
 			}
-			
+
 			// Apply the filter
 			result, err = ctx.ApplyFilter(filter.name, result, filter.args...)
 			if err != nil {
 				return err
 			}
-			
+
 			if IsDebugEnabled() {
 				LogDebug("ForNode: after filter %s, result type: %T", filter.name, result)
 			}
 		}
-		
+
 		// Use the filtered result directly
 		return n.renderForLoop(w, ctx, result)
 	}
@@ -400,7 +401,7 @@ func (n *ForNode) Render(w io.Writer, ctx *RenderContext) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// WORKAROUND: When a filter is used directly in a for loop sequence like:
 	// {% for item in items|sort %}, the parser currently registers the sequence
 	// as a VariableNode with a name like "items|sort" instead of properly parsing
@@ -412,20 +413,20 @@ func (n *ForNode) Render(w io.Writer, ctx *RenderContext) error {
 			if len(parts) == 2 {
 				baseVar := parts[0]
 				filterName := parts[1]
-				
+
 				if IsDebugEnabled() {
 					LogDebug("ForNode: Detected inline filter reference: var=%s, filter=%s", baseVar, filterName)
 				}
-				
+
 				// Get the base value
 				baseValue, _ := ctx.GetVariable(baseVar)
-				
+
 				// Apply the filter
 				if baseValue != nil {
 					if IsDebugEnabled() {
 						LogDebug("ForNode: Applying filter %s to %T manually", filterName, baseValue)
 					}
-					
+
 					// Try to apply the filter
 					if ctx.env != nil {
 						filterFunc, found := ctx.env.filters[filterName]
@@ -443,7 +444,7 @@ func (n *ForNode) Render(w io.Writer, ctx *RenderContext) error {
 			}
 		}
 	}
-	
+
 	if IsDebugEnabled() {
 		LogDebug("ForNode: sequence after evaluation: %T", seq)
 	}
@@ -492,7 +493,7 @@ func (n *ForNode) renderForLoop(w io.Writer, ctx *RenderContext, seq interface{}
 	switch val.Kind() {
 	case reflect.Slice, reflect.Array:
 		length = val.Len()
-		
+
 		// Convert typed slices to []interface{} for consistent iteration
 		// This is essential for for-loop compatibility with filter results
 		if val.Type().Elem().Kind() != reflect.Interface {
@@ -500,7 +501,7 @@ func (n *ForNode) renderForLoop(w io.Writer, ctx *RenderContext, seq interface{}
 			if IsDebugEnabled() {
 				LogDebug("Converting %s to []interface{} for for-loop compatibility", val.Type())
 			}
-			
+
 			// Create a new []interface{} and copy all values
 			interfaceSlice := make([]interface{}, length)
 			for i := 0; i < length; i++ {
@@ -508,7 +509,7 @@ func (n *ForNode) renderForLoop(w io.Writer, ctx *RenderContext, seq interface{}
 					interfaceSlice[i] = val.Index(i).Interface()
 				}
 			}
-			
+
 			// Replace the original sequence with our new interface slice
 			seq = interfaceSlice
 			val = reflect.ValueOf(seq)
@@ -925,18 +926,6 @@ func processMacroTemplate(source string) string {
 
 // renderVariableString renders a string that may contain variable references
 func renderVariableString(text string, ctx *RenderContext, w io.Writer) error {
-	// Special case for the macro test input
-	if strings.Contains(text, "<input type=\"{{ type }}\"") {
-		// This is the specific tag format the test is expecting
-		result := "<input type=\"" + ctx.ToString(ctx.GetVariableOrNil("type")) +
-			"\" name=\"" + ctx.ToString(ctx.GetVariableOrNil("name")) +
-			"\" value=\"" + ctx.ToString(ctx.GetVariableOrNil("value")) +
-			"\" size=\"" + ctx.ToString(ctx.GetVariableOrNil("size")) + "\">"
-		_, err := w.Write([]byte(result))
-		return err
-	}
-
-	// For other cases, do a simple string replacement
 	// Check if the string contains variable references like {{ varname }}
 	if !strings.Contains(text, "{{") {
 		// If not, just write the text directly
@@ -974,8 +963,52 @@ func renderVariableString(text string, ctx *RenderContext, w io.Writer) error {
 		// Extract the variable name, trim whitespace
 		varName := strings.TrimSpace(text[varStart : varStart+varEnd])
 
-		// Get the variable value from context
-		varValue, _ := ctx.GetVariable(varName)
+		// Check for filters in the variable
+		var varValue interface{}
+		var err error
+
+		if strings.Contains(varName, "|") {
+			// Parse the filter expression
+			parts := strings.SplitN(varName, "|", 2)
+			if len(parts) == 2 {
+				baseName := strings.TrimSpace(parts[0])
+				filterName := strings.TrimSpace(parts[1])
+
+				// Get the base value
+				baseValue, _ := ctx.GetVariable(baseName)
+
+				// Extract filter arguments if any
+				filterNameAndArgs := strings.SplitN(filterName, ":", 2)
+				filterName = filterNameAndArgs[0]
+
+				// Apply the filter
+				var filterArgs []interface{}
+				if len(filterNameAndArgs) > 1 {
+					// Parse arguments (very simplistic)
+					argStr := filterNameAndArgs[1]
+					args := strings.Split(argStr, ",")
+					for _, arg := range args {
+						arg = strings.TrimSpace(arg)
+						filterArgs = append(filterArgs, arg)
+					}
+				}
+
+				if ctx.env != nil {
+					varValue, err = ctx.ApplyFilter(filterName, baseValue, filterArgs...)
+					if err != nil {
+						// Fall back to the unfiltered value
+						varValue = baseValue
+					}
+				} else {
+					varValue = baseValue
+				}
+			} else {
+				varValue, _ = ctx.GetVariable(varName)
+			}
+		} else {
+			// Regular variable
+			varValue, _ = ctx.GetVariable(varName)
+		}
 
 		// Convert to string and write
 		buffer.WriteString(ctx.ToString(varValue))
