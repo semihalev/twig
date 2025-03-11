@@ -287,61 +287,6 @@ func (n *ForNode) Render(w io.Writer, ctx *RenderContext) error {
 		}
 	}
 
-	// Special handling for FunctionNode with name "range" directly in for loop
-	if funcNode, ok := n.sequence.(*FunctionNode); ok && funcNode.name == "range" {
-		// Add debug output to see what's happening
-		fmt.Printf("Found range function in for loop with %d args\n", len(funcNode.args))
-
-		// Get the engine's function registry to call range function directly
-		// This handles the case of using range() directly in for loop
-		if ctx.engine != nil && ctx.engine.environment != nil {
-			fmt.Println("Engine and environment exist")
-
-			for i, ext := range ctx.engine.environment.extensions {
-				fmt.Printf("Checking extension %d: %s\n", i, ext.GetName())
-				if functions := ext.GetFunctions(); functions != nil {
-					fmt.Printf("Extension has %d functions\n", len(functions))
-					for name := range functions {
-						fmt.Printf("  - Function: %s\n", name)
-					}
-
-					if rangeFunc, exists := functions["range"]; exists {
-						fmt.Println("Found range function!")
-						// Evaluate all arguments
-						var args []interface{}
-						for i, argNode := range funcNode.args {
-							fmt.Printf("Evaluating arg %d\n", i)
-							arg, err := ctx.EvaluateExpression(argNode)
-							if err != nil {
-								return err
-							}
-							fmt.Printf("Arg %d = %v (type: %T)\n", i, arg, arg)
-							args = append(args, arg)
-						}
-
-						// Call the range function directly
-						fmt.Printf("Calling range function with %d args\n", len(args))
-						result, err := rangeFunc(args...)
-						if err != nil {
-							fmt.Printf("Error from range function: %v\n", err)
-							return err
-						}
-
-						fmt.Printf("Range result: %v (type: %T)\n", result, result)
-
-						// Use the result as our sequence
-						seq := result
-						// Continue with normal for loop processing
-						return n.renderForLoop(w, ctx, seq)
-					}
-				}
-			}
-			fmt.Println("Couldn't find range function in extensions")
-		} else {
-			fmt.Println("Engine or environment is nil")
-		}
-	}
-
 	// Special handling for FilterNode to improve rendering in for loops
 	if filterNode, ok := n.sequence.(*FilterNode); ok {
 		if IsDebugEnabled() {

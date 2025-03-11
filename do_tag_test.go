@@ -6,13 +6,13 @@ import (
 
 func TestDoTag(t *testing.T) {
 	engine := New()
-	
+
 	// Add a custom function for testing
 	engine.AddFunction("double", func(args ...interface{}) (interface{}, error) {
 		if len(args) == 0 {
 			return 0, nil
 		}
-		
+
 		// Type conversion
 		var num float64
 		switch v := args[0].(type) {
@@ -27,10 +27,10 @@ func TestDoTag(t *testing.T) {
 			// Return 0 for unsupported types
 			return 0, nil
 		}
-		
+
 		return num * 2, nil
 	})
-	
+
 	// Disable debug output
 	SetDebugLevel(DebugOff)
 
