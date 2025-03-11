@@ -106,7 +106,8 @@
    - Fixed string concatenation operator (~) for multiple concatenations
    - Implemented proper operator precedence system for expressions
    - Added support for modulo operator (%)
-   - Fixed short-circuit evaluation for logical operators (`and`/`or`)
+   - Fixed short-circuit evaluation for logical operators (`and`/`or`) to properly handle variable existence checks
+   - Fixed critical issue with `{% if foo is defined and foo > 5 %}` patterns when foo is undefined
    - Enhanced parser to correctly handle complex expressions
    - Added comprehensive tests for all operators and precedence rules
    - Fixed tokenizer to properly identify operators in all contexts

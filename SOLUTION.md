@@ -142,6 +142,7 @@ This simplified approach offers several advantages:
    - Implementation in `EvaluateExpression` method:
    ```go
    case *BinaryNode:
+       // First, evaluate the left side of the expression
        left, err := ctx.EvaluateExpression(n.left)
        if err != nil {
            return nil, err
@@ -169,6 +170,8 @@ This simplified approach offers several advantages:
        return ctx.evaluateBinaryOp(n.operator, left, right)
    }
    ```
+   
+   Note: The key improvement is that the right side of logical operations is now only evaluated when necessary. For example, in an `and` expression, if the left side is `false`, we immediately return `false` without evaluating the right side. This prevents errors when the right side would fail to evaluate because it depends on the left side being true (like checking `foo > 5` when `foo` is not defined).
 
 # Function Support in For Loops
 

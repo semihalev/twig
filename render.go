@@ -525,6 +525,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		return ctx.getAttribute(obj, attrStr)
 
 	case *BinaryNode:
+		// First, evaluate the left side of the expression
 		left, err := ctx.EvaluateExpression(n.left)
 		if err != nil {
 			return nil, err
@@ -1057,9 +1058,13 @@ func (ctx *RenderContext) evaluateBinaryOp(operator string, left, right interfac
 		}
 
 	case "and", "&&":
+		// Note: Short-circuit evaluation is already handled in EvaluateExpression
+		// This is just the final boolean combination
 		return ctx.toBool(left) && ctx.toBool(right), nil
 
 	case "or", "||":
+		// Note: Short-circuit evaluation is already handled in EvaluateExpression
+		// This is just the final boolean combination
 		return ctx.toBool(left) || ctx.toBool(right), nil
 
 	case "~":
