@@ -121,6 +121,7 @@ The benchmarks used three types of templates with increasing complexity:
 2. **Memory Efficiency**:
    - Twig uses significantly less memory than Go templates
    - This makes Twig an excellent choice for high-throughput applications
+   - Optimized binary serialization format reduces memory footprint by over 50%
 
 3. **Syntax and Features**:
    - Twig provides a more expressive syntax than Go templates
@@ -136,6 +137,19 @@ Twig is particularly well-suited for:
 - Projects where template syntax readability is important
 - When you need advanced features like macros, inheritance, and rich filtering
 
+## Template Serialization Performance
+
+Comparison of old (gob-based) and new (binary) serialization formats:
+
+| Operation        | Old Format (gob) | New Format (binary) | Improvement |
+|------------------|------------------|---------------------|-------------|
+| Size             | 754 bytes        | 348 bytes           | 53.8% reduction |
+| Serialization    | 7.85 μs/op       | 0.37 μs/op          | 21.2x faster |
+| Deserialization  | 8.29 μs/op       | 0.35 μs/op          | 23.7x faster |
+| Round-trip       | 16.14 μs/op      | 0.72 μs/op          | 22.4x faster |
+
+The new binary serialization format for compiled templates provides significant improvements in both size and performance, making template caching much more efficient.
+
 ## How to Run These Benchmarks
 
 You can run the benchmarks yourself:
@@ -145,6 +159,7 @@ cd benchmark
 go run engine_comparison.go     # Simple comparison of all engines
 go run complex_comparison.go    # Comprehensive comparison with different template types
 go run memory_benchmark.go      # Memory usage comparison
+go run serialization_benchmark.go # Compare template serialization formats
 ```
 
 ## Conclusion
