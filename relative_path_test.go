@@ -119,15 +119,7 @@ func TestRelativePathsWithFromImport(t *testing.T) {
 }
 
 func normalizeWhitespace(s string) string {
-	// This is a more robust implementation for whitespace normalization
-	// Replace newlines with a single space
-	s = strings.ReplaceAll(s, "\n", " ")
-
-	// Replace multiple spaces with a single space
-	for strings.Contains(s, "  ") {
-		s = strings.ReplaceAll(s, "  ", " ")
-	}
-
-	// Trim leading and trailing spaces
-	return strings.TrimSpace(s)
+	// Replace multiple whitespace characters with a single space
+	result := strings.Join(strings.Fields(s), " ")
+	return result
 }

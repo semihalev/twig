@@ -103,6 +103,7 @@ func (e *CoreExtension) GetFilters() map[string]FilterFunc {
 		"nl2br":         e.filterNl2Br,
 		"format":        e.filterFormat,
 		"json_encode":   e.filterJsonEncode,
+		"spaceless":     e.filterSpaceless,
 	}
 }
 
@@ -2256,6 +2257,26 @@ func (e *CoreExtension) filterJsonEncode(value interface{}, args ...interface{})
 			result = prettyJSON.String()
 		}
 	}
+
+	return result, nil
+}
+
+// filterSpaceless removes whitespace between HTML tags
+func (e *CoreExtension) filterSpaceless(value interface{}, args ...interface{}) (interface{}, error) {
+	if value == nil {
+		return "", nil
+	}
+
+	// Convert to string if not already
+	str := fmt.Sprintf("%v", value)
+	if str == "" {
+		return "", nil
+	}
+
+	// Use regex to find whitespace between tags
+	// This will match one or more whitespace characters between a closing tag and an opening tag
+	re := regexp.MustCompile(`>\s+<`)
+	result := re.ReplaceAllString(str, "><")
 
 	return result, nil
 }

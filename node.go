@@ -146,6 +146,7 @@ const (
 	NodeSpaceless
 	NodeDo
 	NodeModuleMethod
+	NodeApply
 )
 
 // RootNode represents the root of a template
@@ -1303,6 +1304,69 @@ func (n *ElementNode) Line() int {
 }
 
 // SpacelessNode is implemented in whitespace.go
+
+// ApplyNode represents a {% apply filter %} ... {% endapply %} block
+type ApplyNode struct {
+	body   []Node
+	filter string
+	args   []Node
+	line   int
+}
+
+// NewApplyNode creates a new apply node
+func NewApplyNode(body []Node, filter string, args []Node, line int) *ApplyNode {
+	return &ApplyNode{
+		body:   body,
+		filter: filter,
+		args:   args,
+		line:   line,
+	}
+}
+
+func (n *ApplyNode) Type() NodeType {
+	return NodeApply
+}
+
+func (n *ApplyNode) Line() int {
+	return n.line
+}
+
+// Render renders the apply node by applying a filter to the rendered body
+func (n *ApplyNode) Render(w io.Writer, ctx *RenderContext) error {
+	// First render body content to a buffer
+	var buf bytes.Buffer
+
+	// Render all body nodes
+	for _, node := range n.body {
+		err := node.Render(&buf, ctx)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Get the body content
+	content := buf.String()
+
+	// Evaluate filter arguments
+	filterArgs := make([]interface{}, len(n.args))
+	for i, arg := range n.args {
+		val, err := ctx.EvaluateExpression(arg)
+		if err != nil {
+			return err
+		}
+		filterArgs[i] = val
+	}
+
+	// Apply the filter to the content
+	result, err := ctx.ApplyFilter(n.filter, content, filterArgs...)
+	if err != nil {
+		return err
+	}
+
+	// Write the filtered result
+	_, err = WriteString(w, ctx.ToString(result))
+	return err
+}
 
 // Implement Node interface for RootNode
 func (n *RootNode) Render(w io.Writer, ctx *RenderContext) error {

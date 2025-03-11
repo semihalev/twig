@@ -1,6 +1,7 @@
 package twig
 
 import (
+	"bytes"
 	"io"
 	"strings"
 )
@@ -33,13 +34,28 @@ func NewSpacelessNode(body []Node, line int) *SpacelessNode {
 
 // Render renders the node to a writer
 func (n *SpacelessNode) Render(w io.Writer, ctx *RenderContext) error {
-	// Just render the content directly - we don't manipulate HTML
+	// First render body content to a buffer
+	var buf bytes.Buffer
+
+	// Render all body nodes
 	for _, node := range n.body {
-		if err := node.Render(w, ctx); err != nil {
+		err := node.Render(&buf, ctx)
+		if err != nil {
 			return err
 		}
 	}
-	return nil
+
+	// Apply spaceless filter to the rendered content
+	result, err := ctx.ApplyFilter("spaceless", buf.String())
+	if err != nil {
+		// Fall back to original content on filter error
+		_, err = w.Write(buf.Bytes())
+		return err
+	}
+
+	// Write the processed result
+	_, err = WriteString(w, ctx.ToString(result))
+	return err
 }
 
 // Line returns the line number of the node

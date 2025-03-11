@@ -102,6 +102,7 @@ func (p *Parser) initBlockHandlers() {
 		"from":      p.parseFrom,
 		"spaceless": p.parseSpaceless,
 		"verbatim":  p.parseVerbatim,
+		"apply":     p.parseApply,
 
 		// Special closing tags - they will be handled in their corresponding open tag parsers
 		"endif":        p.parseEndTag,
@@ -109,6 +110,7 @@ func (p *Parser) initBlockHandlers() {
 		"endmacro":     p.parseEndTag,
 		"endblock":     p.parseEndTag,
 		"endspaceless": p.parseEndTag,
+		"endapply":     p.parseEndTag,
 		"else":         p.parseEndTag,
 		"elseif":       p.parseEndTag,
 		"endverbatim":  p.parseEndTag,
@@ -210,7 +212,7 @@ func (p *Parser) parseOuterTemplate() ([]Node, error) {
 			// Check if this is a control ending tag (endif, endfor, endblock, etc.)
 			if blockName == "endif" || blockName == "endfor" || blockName == "endblock" ||
 				blockName == "endmacro" || blockName == "else" || blockName == "elseif" ||
-				blockName == "endspaceless" {
+				blockName == "endspaceless" || blockName == "endapply" || blockName == "endverbatim" {
 				// We should return to the parent parser that's handling the parent block
 				// First move back two steps to the start of the block tag
 				p.tokenIndex -= 2
