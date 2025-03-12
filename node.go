@@ -2,6 +2,7 @@ package twig
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -684,13 +685,14 @@ func (n *ExtendsNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Load the parent template with resolved path
 	parentTemplate, err := ctx.engine.Load(resolvedName)
 	if err != nil {
-		// If template not found with resolved path, try original name
-		if resolvedName != templateName {
+		// Only try the fallback if the template was not found AND the paths are different
+		if errors.Is(err, ErrTemplateNotFound) && resolvedName != templateName {
 			parentTemplate, err = ctx.engine.Load(templateName)
 			if err != nil {
 				return err
 			}
 		} else {
+			// For any other error (including syntax errors), return immediately
 			return err
 		}
 	}
@@ -701,7 +703,7 @@ func (n *ExtendsNode) Render(w io.Writer, ctx *RenderContext) error {
 	// This ensures the parent template knows it's being extended and preserves our blocks
 	parentCtx := NewRenderContext(ctx.env, ctx.context, ctx.engine)
 	parentCtx.extending = true // Flag that the parent is being extended
-	
+
 	// Pass along the parent template as lastLoadedTemplate for relative path resolution
 	parentCtx.lastLoadedTemplate = parentTemplate
 
@@ -793,19 +795,20 @@ func (n *IncludeNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Load the template with resolved path
 	template, err := ctx.engine.Load(resolvedName)
 	if err != nil {
-		// If template not found with resolved path, try original name
-		if resolvedName != templateName {
+		// Only try the fallback if the template was not found AND the paths are different
+		if errors.Is(err, ErrTemplateNotFound) && resolvedName != templateName {
 			template, err = ctx.engine.Load(templateName)
 			if err != nil {
-				if n.ignoreMissing {
+				if n.ignoreMissing && errors.Is(err, ErrTemplateNotFound) {
 					return nil
 				}
 				return err
 			}
 		} else {
-			if n.ignoreMissing {
+			if n.ignoreMissing && errors.Is(err, ErrTemplateNotFound) {
 				return nil
 			}
+			// For any other error (including syntax errors), return immediately
 			return err
 		}
 	}
@@ -818,7 +821,7 @@ func (n *IncludeNode) Render(w io.Writer, ctx *RenderContext) error {
 		includeCtx := ctx.Clone()
 		includeCtx.lastLoadedTemplate = template
 		defer includeCtx.Release()
-		
+
 		return template.nodes.Render(w, includeCtx)
 	}
 
@@ -840,7 +843,7 @@ func (n *IncludeNode) Render(w io.Writer, ctx *RenderContext) error {
 
 		// Create a new context
 		includeCtx = NewRenderContext(ctx.env, contextVars, ctx.engine)
-			// Set the template as the lastLoadedTemplate for relative path resolutionn			includeCtx.lastLoadedTemplate = template
+		// Set the template as the lastLoadedTemplate for relative path resolutionn			includeCtx.lastLoadedTemplate = template
 		defer includeCtx.Release()
 
 		// If sandboxed, enable sandbox mode
@@ -1206,13 +1209,14 @@ func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Load the template with resolved path
 	template, err := ctx.engine.Load(resolvedName)
 	if err != nil {
-		// If template not found with resolved path, try original name
-		if resolvedName != templateName {
+		// Only try the fallback if the template was not found AND the paths are different
+		if errors.Is(err, ErrTemplateNotFound) && resolvedName != templateName {
 			template, err = ctx.engine.Load(templateName)
 			if err != nil {
 				return err
 			}
 		} else {
+			// For any other error (including syntax errors), return immediately
 			return err
 		}
 	}
@@ -1296,13 +1300,14 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Load the template with resolved path
 	template, err := ctx.engine.Load(resolvedName)
 	if err != nil {
-		// If template not found with resolved path, try original name
-		if resolvedName != templateName {
+		// Only try the fallback if the template was not found AND the paths are different
+		if errors.Is(err, ErrTemplateNotFound) && resolvedName != templateName {
 			template, err = ctx.engine.Load(templateName)
 			if err != nil {
 				return err
 			}
 		} else {
+			// For any other error (including syntax errors), return immediately
 			return err
 		}
 	}
