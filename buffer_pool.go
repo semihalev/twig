@@ -24,6 +24,45 @@ type Buffer struct {
 // Global buffer pool instance
 var globalBufferPool = NewBufferPool()
 
+// TokenBufferPool provides a pool for token buffers
+// These are specialized token buffers with pre-allocated capacity
+// based on the expected template size
+var TokenBufferPool = sync.Pool{
+	New: func() interface{} {
+		buffer := make([]Token, 0, 128) // Default mid-size buffer
+		return &buffer
+	},
+}
+
+// Size-tiered token buffer pools for different template sizes
+// This avoids wasteful allocations for small templates and
+// ensures enough capacity for large templates
+var (
+	// Small templates (< 4KB)
+	SmallTokenBufferPool = sync.Pool{
+		New: func() interface{} {
+			buffer := make([]Token, 0, 64)
+			return &buffer
+		},
+	}
+
+	// Medium templates (4KB - 20KB)
+	MediumTokenBufferPool = sync.Pool{
+		New: func() interface{} {
+			buffer := make([]Token, 0, 256)
+			return &buffer
+		},
+	}
+
+	// Large templates (> 20KB)
+	LargeTokenBufferPool = sync.Pool{
+		New: func() interface{} {
+			buffer := make([]Token, 0, 1024)
+			return &buffer
+		},
+	}
+)
+
 // NewBufferPool creates a new buffer pool
 func NewBufferPool() *BufferPool {
 	return &BufferPool{
@@ -586,4 +625,137 @@ func stringify(val interface{}) string {
 	
 	// Fall back to fmt.Sprintf for complex types
 	return fmt.Sprintf("%v", val)
+}
+
+// GetTokenBuffer gets a token buffer with capacity optimized for the given template size
+func GetTokenBuffer(templateSize int) *[]Token {
+	// Select the appropriate pool based on template size
+	// For very small templates, use the small pool
+	// For medium templates, use the medium pool
+	// For large templates, use the large pool
+	// For extremely large templates, allocate directly
+	
+	var buffer *[]Token
+	
+	if templateSize < 4*1024 {
+		// Small template
+		buffer = SmallTokenBufferPool.Get().(*[]Token)
+		if cap(*buffer) < estimateTokenCount(templateSize) {
+			// Need more capacity
+			*buffer = make([]Token, 0, estimateTokenCount(templateSize))
+		}
+	} else if templateSize < 20*1024 {
+		// Medium template
+		buffer = MediumTokenBufferPool.Get().(*[]Token)
+		if cap(*buffer) < estimateTokenCount(templateSize) {
+			// Need more capacity
+			*buffer = make([]Token, 0, estimateTokenCount(templateSize))
+		}
+	} else if templateSize < 100*1024 {
+		// Large template
+		buffer = LargeTokenBufferPool.Get().(*[]Token)
+		if cap(*buffer) < estimateTokenCount(templateSize) {
+			// Need more capacity
+			*buffer = make([]Token, 0, estimateTokenCount(templateSize))
+		}
+	} else {
+		// Extremely large template
+		// Allocate directly with appropriate capacity
+		newBuffer := make([]Token, 0, estimateTokenCount(templateSize))
+		buffer = &newBuffer
+	}
+	
+	// Clear the buffer in case it contains old tokens
+	*buffer = (*buffer)[:0]
+	
+	return buffer
+}
+
+// ReleaseTokenBuffer returns a token buffer to the appropriate pool
+func ReleaseTokenBuffer(buffer *[]Token) {
+	if buffer == nil {
+		return
+	}
+	
+	// Clear the buffer to prevent memory leaks
+	*buffer = (*buffer)[:0]
+	
+	// Put back in the appropriate pool based on capacity
+	cap := cap(*buffer)
+	if cap <= 64 {
+		SmallTokenBufferPool.Put(buffer)
+	} else if cap <= 256 {
+		MediumTokenBufferPool.Put(buffer)
+	} else if cap <= 1024 {
+		LargeTokenBufferPool.Put(buffer)
+	}
+	// Very large buffers aren't returned to the pool
+}
+
+// GetTokenBufferWithCapacity gets a token buffer with at least the requested capacity
+func GetTokenBufferWithCapacity(capacity int) *[]Token {
+	// For very small capacity requests, use the small pool
+	// For medium capacity requests, use the medium pool
+	// For large capacity requests, use the large pool
+	// For very large capacity requests, allocate directly
+	var buffer *[]Token
+	
+	if capacity <= 64 {
+		buffer = SmallTokenBufferPool.Get().(*[]Token)
+		if cap(*buffer) < capacity {
+			*buffer = make([]Token, 0, capacity)
+		}
+	} else if capacity <= 256 {
+		buffer = MediumTokenBufferPool.Get().(*[]Token)
+		if cap(*buffer) < capacity {
+			*buffer = make([]Token, 0, capacity)
+		}
+	} else if capacity <= 1024 {
+		buffer = LargeTokenBufferPool.Get().(*[]Token)
+		if cap(*buffer) < capacity {
+			*buffer = make([]Token, 0, capacity)
+		}
+	} else {
+		// Very large capacity request, allocate directly
+		newBuffer := make([]Token, 0, capacity)
+		buffer = &newBuffer
+	}
+	
+	// Clear the buffer
+	*buffer = (*buffer)[:0]
+	
+	return buffer
+}
+
+// RecycleTokens enables token slice reuse for nested template parsing
+// This is useful for include/extends tags to avoid allocations
+func RecycleTokens(tokens []Token) []Token {
+	// If tokens is nil or empty, return an empty slice
+	if len(tokens) == 0 {
+		return []Token{}
+	}
+	
+	// Create a new slice with the same backing array
+	recycled := tokens[:0]
+	return recycled
+}
+
+// estimateTokenCount estimates the number of tokens needed for a template
+// This is used to allocate token buffers with appropriate capacity
+func estimateTokenCount(templateSize int) int {
+	// From empirical testing, templates typically have:
+	// - Small templates: ~1 token per 12 bytes
+	// - Medium templates: ~1 token per 15 bytes
+	// - Large templates: ~1 token per 20 bytes
+	
+	if templateSize < 4*1024 {
+		// Small template
+		return max(64, templateSize/12+16)
+	} else if templateSize < 20*1024 {
+		// Medium template
+		return max(256, templateSize/15+32)
+	} else {
+		// Large template
+		return max(1024, templateSize/20+64)
+	}
 }

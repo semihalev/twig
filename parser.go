@@ -63,37 +63,25 @@ func (p *Parser) Parse(source string) (Node, error) {
 	// This will treat everything outside twig tags as TEXT tokens
 	var err error
 	
-	// Use the appropriate tokenizer based on template size
-	// For large templates, use the optimized tokenizer V2
-	// For smaller templates, use the original tokenizer
+	// Use zero allocation tokenizer for optimal performance
+	tokenizer := GetTokenizer(p.source, 0)
 	
-	// Use optimized tokenizer for large templates (over 4KB)
+	// Use optimized version for larger templates
 	if len(p.source) > 4096 {
-		tokenizer := GetOptimizedTokenizerV2()
-		tokenizer.Initialize(p.source)
-		
-		// Tokenize using the optimized tokenizer
-		p.tokens, err = tokenizer.TokenizeHtmlPreserving()
-		
-		// Apply whitespace control to handle whitespace trimming directives
-		if err == nil {
-			tokenizer.ApplyWhitespaceControl()
-		}
-		
-		// Return the tokenizer to the pool
-		ReleaseOptimizedTokenizerV2(tokenizer)
+		// Use the optimized tag detection for large templates
+		p.tokens, err = tokenizer.TokenizeOptimized()
 	} else {
-		// Use original tokenizer for smaller templates
-		tokenizer := GetTokenizer(p.source, 0)
+		// Use regular tokenization for smaller templates
 		p.tokens, err = tokenizer.TokenizeHtmlPreserving()
-		
-		// Apply whitespace control to handle whitespace trimming directives
-		if err == nil {
-			tokenizer.ApplyWhitespaceControl()
-		}
-		
-		ReleaseTokenizer(tokenizer)
 	}
+	
+	// Apply whitespace control to handle whitespace trimming directives
+	if err == nil {
+		tokenizer.ApplyWhitespaceControl()
+	}
+	
+	// Return the tokenizer to the pool
+	ReleaseTokenizer(tokenizer)
 	
 	if err != nil {
 		return nil, fmt.Errorf("tokenization error: %w", err)
@@ -1236,9 +1224,11 @@ func (p *Parser) parseSpaceless(parser *Parser) (Node, error) {
 	return NewSpacelessNode(spacelessBody, spacelessLine), nil
 }
 
-// HtmlPreservingTokenize is an exported version of htmlPreservingTokenize for testing
+// HtmlPreservingTokenize is for testing - uses the optimized tokenizer
 func (p *Parser) HtmlPreservingTokenize() ([]Token, error) {
-	return p.htmlPreservingTokenize()
+	tokenizer := GetTokenizer(p.source, 0)
+	defer ReleaseTokenizer(tokenizer)
+	return tokenizer.TokenizeHtmlPreserving()
 }
 
 // SetSource sets the source for parsing - used for testing
