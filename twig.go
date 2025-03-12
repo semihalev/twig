@@ -607,6 +607,9 @@ func (t *Template) Render(context map[string]interface{}) (string, error) {
 func (t *Template) RenderTo(w io.Writer, context map[string]interface{}) error {
 	// Get a render context from the pool
 	ctx := NewRenderContext(t.env, context, t.engine)
+	
+	// Set the template as the lastLoadedTemplate for relative path resolution
+	ctx.lastLoadedTemplate = t
 
 	// Debug logging only when enabled
 	LogDebug("Rendering template '%s'", t.name)

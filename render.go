@@ -17,17 +17,18 @@ import (
 
 // RenderContext holds the state during template rendering
 type RenderContext struct {
-	env          *Environment
-	context      map[string]interface{}
-	blocks       map[string][]Node
-	parentBlocks map[string][]Node // Original block content from parent templates
-	macros       map[string]Node
-	parent       *RenderContext
-	engine       *Engine    // Reference to engine for loading templates
-	extending    bool       // Whether this template extends another
-	currentBlock *BlockNode // Current block being rendered (for parent() function)
-	inParentCall bool       // Flag to indicate if we're currently rendering a parent() call
-	sandboxed    bool       // Flag indicating if this context is sandboxed
+	env               *Environment
+	context           map[string]interface{}
+	blocks            map[string][]Node
+	parentBlocks      map[string][]Node // Original block content from parent templates
+	macros            map[string]Node
+	parent            *RenderContext
+	engine            *Engine    // Reference to engine for loading templates
+	extending         bool       // Whether this template extends another
+	currentBlock      *BlockNode // Current block being rendered (for parent() function)
+	inParentCall      bool       // Flag to indicate if we're currently rendering a parent() call
+	sandboxed         bool       // Flag indicating if this context is sandboxed
+	lastLoadedTemplate *Template  // The template that created this context (for resolving relative paths)
 }
 
 // contextMapPool is a pool for the maps used in RenderContext
@@ -330,6 +331,9 @@ func (ctx *RenderContext) Clone() *RenderContext {
 
 	// Inherit sandbox state
 	newCtx.sandboxed = ctx.sandboxed
+	
+	// Copy the lastLoadedTemplate reference (crucial for relative path resolution)
+	newCtx.lastLoadedTemplate = ctx.lastLoadedTemplate
 
 	// Ensure maps are initialized (they should be from the pool already)
 	if newCtx.context == nil {

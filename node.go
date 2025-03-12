@@ -701,6 +701,9 @@ func (n *ExtendsNode) Render(w io.Writer, ctx *RenderContext) error {
 	// This ensures the parent template knows it's being extended and preserves our blocks
 	parentCtx := NewRenderContext(ctx.env, ctx.context, ctx.engine)
 	parentCtx.extending = true // Flag that the parent is being extended
+	
+	// Pass along the parent template as lastLoadedTemplate for relative path resolution
+	parentCtx.lastLoadedTemplate = parentTemplate
 
 	// Ensure the context is released even if an error occurs
 	defer parentCtx.Release()
@@ -811,7 +814,12 @@ func (n *IncludeNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// Fast path: if no special handling needed and not sandboxed, render with current context
 	if !n.only && !n.sandboxed && len(n.variables) == 0 {
-		return template.nodes.Render(w, ctx)
+		// Clone the context but with the new lastLoadedTemplate
+		includeCtx := ctx.Clone()
+		includeCtx.lastLoadedTemplate = template
+		defer includeCtx.Release()
+		
+		return template.nodes.Render(w, includeCtx)
 	}
 
 	// Need a new context for 'only' mode, sandboxed mode, or with variables
@@ -832,6 +840,7 @@ func (n *IncludeNode) Render(w io.Writer, ctx *RenderContext) error {
 
 		// Create a new context
 		includeCtx = NewRenderContext(ctx.env, contextVars, ctx.engine)
+			// Set the template as the lastLoadedTemplate for relative path resolutionn			includeCtx.lastLoadedTemplate = template
 		defer includeCtx.Release()
 
 		// If sandboxed, enable sandbox mode
@@ -1210,6 +1219,7 @@ func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// Create a new context for the imported template
 	importCtx := NewRenderContext(ctx.env, nil, ctx.engine)
+	// Set the template as the lastLoadedTemplate for relative path resolutionn	importCtx.lastLoadedTemplate = template
 
 	// Ensure context is released even in error paths
 	defer importCtx.Release()
@@ -1299,6 +1309,7 @@ func (n *FromImportNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// Create a new context for the imported template
 	importCtx := NewRenderContext(ctx.env, nil, ctx.engine)
+	// Set the template as the lastLoadedTemplate for relative path resolutionn	importCtx.lastLoadedTemplate = template
 
 	// Ensure context is released even in error paths
 	defer importCtx.Release()
