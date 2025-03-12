@@ -1,9 +1,8 @@
 package twig
 
 import (
-	"bytes"
 	"io"
-	"sync"
+	"strconv"
 )
 
 // countNewlines counts newlines in a string without allocations.
@@ -18,37 +17,57 @@ func countNewlines(s string) int {
 	return count
 }
 
-// byteBufferPool is used to reuse byte buffers during node rendering
-var byteBufferPool = sync.Pool{
-	New: func() interface{} {
-		return &bytes.Buffer{}
-	},
-}
-
-// GetByteBuffer gets a bytes.Buffer from the pool
-func GetByteBuffer() *bytes.Buffer {
-	buf := byteBufferPool.Get().(*bytes.Buffer)
-	buf.Reset() // Clear any previous content
-	return buf
-}
-
-// PutByteBuffer returns a bytes.Buffer to the pool
-func PutByteBuffer(buf *bytes.Buffer) {
-	byteBufferPool.Put(buf)
-}
-
 // WriteString optimally writes a string to a writer
 // This avoids allocating a new byte slice for each string written
+// Uses our optimized Buffer pool for better performance
 func WriteString(w io.Writer, s string) (int, error) {
 	// Fast path for strings.Builder, bytes.Buffer and similar structs that have WriteString
 	if sw, ok := w.(io.StringWriter); ok {
 		return sw.WriteString(s)
 	}
+	
+	// Fast path for our own Buffer type
+	if buf, ok := w.(*Buffer); ok {
+		return buf.WriteString(s)
+	}
 
 	// Fallback path - reuse buffer from pool to avoid allocation
-	buf := GetByteBuffer()
+	buf := GetBuffer()
 	buf.WriteString(s)
 	n, err := w.Write(buf.Bytes())
-	PutByteBuffer(buf)
+	buf.Release()
 	return n, err
+}
+
+// WriteFormat writes a formatted string to a writer with minimal allocations
+// Similar to fmt.Fprintf but uses our optimized Buffer for better performance
+func WriteFormat(w io.Writer, format string, args ...interface{}) (int, error) {
+	// Fast path for our own Buffer type
+	if buf, ok := w.(*Buffer); ok {
+		return buf.WriteFormat(format, args...)
+	}
+	
+	// Use a pooled buffer for other writer types
+	buf := GetBuffer()
+	defer buf.Release()
+	
+	// Write the formatted string to the buffer
+	buf.WriteFormat(format, args...)
+	
+	// Write the buffer to the writer
+	return w.Write(buf.Bytes())
+}
+
+// FormatInt formats an integer without allocations
+// Returns a string representation using cached small integers
+func FormatInt(i int) string {
+	// Use pre-computed strings for small integers
+	if i >= 0 && i < 100 {
+		return smallIntStrings[i]
+	} else if i > -100 && i < 0 {
+		return smallNegIntStrings[-i]
+	}
+	
+	// Fall back to standard formatting
+	return strconv.Itoa(i)
 }
