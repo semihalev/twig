@@ -758,6 +758,11 @@ func (t *ZeroAllocTokenizer) tokenizeTemplatePath(path string) {
 	}
 }
 
+// isCharAlpha checks if a byte is an alphabetic character
+func isCharAlpha(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
 // tokenizeObjectContents handles object literal contents 
 func (t *ZeroAllocTokenizer) tokenizeObjectContents(content string) {
 	// Track state for nested structures

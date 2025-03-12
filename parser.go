@@ -63,24 +63,37 @@ func (p *Parser) Parse(source string) (Node, error) {
 	// This will treat everything outside twig tags as TEXT tokens
 	var err error
 	
-	// Use optimized tokenizer with global string cache for better performance
-	optimizedTokenizer := NewOptimizedTokenizer()
+	// Use the appropriate tokenizer based on template size
+	// For large templates, use the optimized tokenizer V2
+	// For smaller templates, use the original tokenizer
 	
-	// Set the source for the base tokenizer
-	optimizedTokenizer.baseTokenizer.source = p.source
-	optimizedTokenizer.baseTokenizer.position = 0
-	optimizedTokenizer.baseTokenizer.line = 1
-	
-	// Tokenize using the optimized tokenizer
-	p.tokens, err = optimizedTokenizer.TokenizeHtmlPreserving()
-	
-	// Apply whitespace control to handle whitespace trimming directives
-	if err == nil {
-		optimizedTokenizer.ApplyWhitespaceControl()
+	// Use optimized tokenizer for large templates (over 4KB)
+	if len(p.source) > 4096 {
+		tokenizer := GetOptimizedTokenizerV2()
+		tokenizer.Initialize(p.source)
+		
+		// Tokenize using the optimized tokenizer
+		p.tokens, err = tokenizer.TokenizeHtmlPreserving()
+		
+		// Apply whitespace control to handle whitespace trimming directives
+		if err == nil {
+			tokenizer.ApplyWhitespaceControl()
+		}
+		
+		// Return the tokenizer to the pool
+		ReleaseOptimizedTokenizerV2(tokenizer)
+	} else {
+		// Use original tokenizer for smaller templates
+		tokenizer := GetTokenizer(p.source, 0)
+		p.tokens, err = tokenizer.TokenizeHtmlPreserving()
+		
+		// Apply whitespace control to handle whitespace trimming directives
+		if err == nil {
+			tokenizer.ApplyWhitespaceControl()
+		}
+		
+		ReleaseTokenizer(tokenizer)
 	}
-	
-	// Return the tokenizer to the pool
-	ReleaseOptimizedTokenizer(optimizedTokenizer)
 	
 	if err != nil {
 		return nil, fmt.Errorf("tokenization error: %w", err)
