@@ -62,10 +62,10 @@ func (p *Parser) Parse(source string) (Node, error) {
 	// Use the optimized tokenizer for maximum performance and minimal allocations
 	// This will treat everything outside twig tags as TEXT tokens
 	var err error
-	
+
 	// Use zero allocation tokenizer for optimal performance
 	tokenizer := GetTokenizer(p.source, 0)
-	
+
 	// Use optimized version for larger templates
 	if len(p.source) > 4096 {
 		// Use the optimized tag detection for large templates
@@ -74,15 +74,15 @@ func (p *Parser) Parse(source string) (Node, error) {
 		// Use regular tokenization for smaller templates
 		p.tokens, err = tokenizer.TokenizeHtmlPreserving()
 	}
-	
+
 	// Apply whitespace control to handle whitespace trimming directives
 	if err == nil {
 		tokenizer.ApplyWhitespaceControl()
 	}
-	
+
 	// Return the tokenizer to the pool
 	ReleaseTokenizer(tokenizer)
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("tokenization error: %w", err)
 	}

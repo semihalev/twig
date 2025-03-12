@@ -363,9 +363,9 @@ func GetArgSlice(size int) []interface{} {
 	if size <= 0 {
 		return nil
 	}
-	
+
 	var slice []interface{}
-	
+
 	switch {
 	case size <= 2:
 		slice = smallArgSlicePool.Get().([]interface{})
@@ -377,7 +377,7 @@ func GetArgSlice(size int) []interface{} {
 		// For very large slices, just allocate directly
 		return make([]interface{}, 0, size)
 	}
-	
+
 	// Clear the slice but maintain capacity
 	return slice[:0]
 }
@@ -387,15 +387,15 @@ func ReleaseArgSlice(slice []interface{}) {
 	if slice == nil {
 		return
 	}
-	
+
 	// Clear all references
 	for i := range slice {
 		slice[i] = nil
 	}
-	
+
 	// Reset length to 0
 	slice = slice[:0]
-	
+
 	// Return to appropriate pool based on capacity
 	switch cap(slice) {
 	case 2:
@@ -440,7 +440,7 @@ func GetHashMap(size int) map[string]interface{} {
 		}
 		return hashMap
 	}
-	
+
 	// For larger maps, just allocate directly
 	return make(map[string]interface{}, size)
 }
@@ -450,26 +450,26 @@ func ReleaseHashMap(hashMap map[string]interface{}) {
 	if hashMap == nil {
 		return
 	}
-	
+
 	// Clear all entries (not used directly in our defer block)
 	// for k := range hashMap {
 	//     delete(hashMap, k)
 	// }
-	
+
 	// Return to appropriate pool based on capacity
-	// We don't actually clear the map when releasing through the defer, 
+	// We don't actually clear the map when releasing through the defer,
 	// because we return the map as the result and deleting entries would
 	// clear the returned result
-	
+
 	// Map doesn't have a built-in cap function
 	// Not using pool return for maps directly returned as results
-	
-	/* 
-	switch {
-	case len(hashMap) <= 5:
-		smallHashMapPool.Put(hashMap)
-	case len(hashMap) <= 15:
-		mediumHashMapPool.Put(hashMap)
-	}
+
+	/*
+		switch {
+		case len(hashMap) <= 5:
+			smallHashMapPool.Put(hashMap)
+		case len(hashMap) <= 15:
+			mediumHashMapPool.Put(hashMap)
+		}
 	*/
 }

@@ -34,9 +34,9 @@ func BenchmarkStandardBufferWrite(b *testing.B) {
 func BenchmarkBufferIntegerFormatting(b *testing.B) {
 	buf := GetBuffer()
 	defer buf.Release()
-	
+
 	vals := []int{0, 5, -5, 123, -123, 9999, -9999, 123456789, -123456789}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.Reset()
@@ -48,9 +48,9 @@ func BenchmarkBufferIntegerFormatting(b *testing.B) {
 
 func BenchmarkStandardIntegerFormatting(b *testing.B) {
 	buf := &bytes.Buffer{}
-	
+
 	vals := []int{0, 5, -5, 123, -123, 9999, -9999, 123456789, -123456789}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.Reset()
@@ -65,7 +65,7 @@ func BenchmarkSmallIntegerFormatting(b *testing.B) {
 	// pre-computed string table
 	buf := GetBuffer()
 	defer buf.Release()
-	
+
 	b.Run("Optimized_Small_Ints", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			buf.Reset()
@@ -74,7 +74,7 @@ func BenchmarkSmallIntegerFormatting(b *testing.B) {
 			}
 		}
 	})
-	
+
 	b.Run("Standard_Small_Ints", func(b *testing.B) {
 		sbuf := &bytes.Buffer{}
 		for i := 0; i < b.N; i++ {
@@ -89,15 +89,15 @@ func BenchmarkSmallIntegerFormatting(b *testing.B) {
 func BenchmarkFloatFormatting(b *testing.B) {
 	buf := GetBuffer()
 	defer buf.Release()
-	
+
 	vals := []float64{
-		0.0, 1.0, -1.0,             // Whole numbers
-		3.14, -2.718,               // Common constants
-		123.456, -789.012,          // Medium floats
-		0.123, 0.001, 9.999,        // Small decimals
-		1234567.89, -9876543.21,    // Large numbers
+		0.0, 1.0, -1.0, // Whole numbers
+		3.14, -2.718, // Common constants
+		123.456, -789.012, // Medium floats
+		0.123, 0.001, 9.999, // Small decimals
+		1234567.89, -9876543.21, // Large numbers
 	}
-	
+
 	b.Run("OptimizedFloat", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			buf.Reset()
@@ -106,7 +106,7 @@ func BenchmarkFloatFormatting(b *testing.B) {
 			}
 		}
 	})
-	
+
 	b.Run("StandardFloat", func(b *testing.B) {
 		sbuf := &bytes.Buffer{}
 		for i := 0; i < b.N; i++ {
@@ -121,19 +121,19 @@ func BenchmarkFloatFormatting(b *testing.B) {
 func BenchmarkFormatString(b *testing.B) {
 	buf := GetBuffer()
 	defer buf.Release()
-	
+
 	format := "Hello, %s! Count: %d, Value: %v"
 	name := "World"
 	count := 42
 	value := true
-	
+
 	b.Run("BufferFormat", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			buf.Reset()
 			buf.WriteFormat(format, name, count, value)
 		}
 	})
-	
+
 	b.Run("FmtSprintf", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			// Each fmt.Sprintf creates a new string
@@ -148,19 +148,19 @@ func BenchmarkFormatInt(b *testing.B) {
 			_ = FormatInt(42)
 		}
 	})
-	
+
 	b.Run("SmallInt_Standard", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_ = strconv.Itoa(42)
 		}
 	})
-	
+
 	b.Run("LargeInt_Optimized", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_ = FormatInt(12345678)
 		}
 	})
-	
+
 	b.Run("LargeInt_Standard", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_ = strconv.Itoa(12345678)
@@ -171,7 +171,7 @@ func BenchmarkFormatInt(b *testing.B) {
 func BenchmarkWriteValue(b *testing.B) {
 	buf := GetBuffer()
 	defer buf.Release()
-	
+
 	values := []interface{}{
 		"string value",
 		123,
@@ -180,7 +180,7 @@ func BenchmarkWriteValue(b *testing.B) {
 		true,
 		[]byte("byte slice"),
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.Reset()
@@ -199,7 +199,7 @@ func BenchmarkStringifyValues(b *testing.B) {
 		true,
 		[]byte("byte slice"),
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for _, v := range values {
@@ -217,7 +217,7 @@ func BenchmarkBufferGrowth(b *testing.B) {
 			buf.Release()
 		}
 	})
-	
+
 	b.Run("Medium", func(b *testing.B) {
 		mediumStr := "medium string that is longer than the small one but still reasonable"
 		for i := 0; i < b.N; i++ {
@@ -226,7 +226,7 @@ func BenchmarkBufferGrowth(b *testing.B) {
 			buf.Release()
 		}
 	})
-	
+
 	b.Run("Large", func(b *testing.B) {
 		largeStr := string(make([]byte, 2048)) // 2KB string
 		for i := 0; i < b.N; i++ {
@@ -240,9 +240,9 @@ func BenchmarkBufferGrowth(b *testing.B) {
 func BenchmarkBufferToWriter(b *testing.B) {
 	buf := GetBuffer()
 	defer buf.Release()
-	
+
 	str := "This is a test string that will be written to a discard writer"
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.Reset()

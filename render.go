@@ -17,17 +17,17 @@ import (
 
 // RenderContext holds the state during template rendering
 type RenderContext struct {
-	env               *Environment
-	context           map[string]interface{}
-	blocks            map[string][]Node
-	parentBlocks      map[string][]Node // Original block content from parent templates
-	macros            map[string]Node
-	parent            *RenderContext
-	engine            *Engine    // Reference to engine for loading templates
-	extending         bool       // Whether this template extends another
-	currentBlock      *BlockNode // Current block being rendered (for parent() function)
-	inParentCall      bool       // Flag to indicate if we're currently rendering a parent() call
-	sandboxed         bool       // Flag indicating if this context is sandboxed
+	env                *Environment
+	context            map[string]interface{}
+	blocks             map[string][]Node
+	parentBlocks       map[string][]Node // Original block content from parent templates
+	macros             map[string]Node
+	parent             *RenderContext
+	engine             *Engine    // Reference to engine for loading templates
+	extending          bool       // Whether this template extends another
+	currentBlock       *BlockNode // Current block being rendered (for parent() function)
+	inParentCall       bool       // Flag to indicate if we're currently rendering a parent() call
+	sandboxed          bool       // Flag indicating if this context is sandboxed
 	lastLoadedTemplate *Template  // The template that created this context (for resolving relative paths)
 }
 
@@ -331,7 +331,7 @@ func (ctx *RenderContext) Clone() *RenderContext {
 
 	// Inherit sandbox state
 	newCtx.sandboxed = ctx.sandboxed
-	
+
 	// Copy the lastLoadedTemplate reference (crucial for relative path resolution)
 	newCtx.lastLoadedTemplate = ctx.lastLoadedTemplate
 
@@ -782,7 +782,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		// We need to avoid pooling for arrays that might be directly used by filters like merge
 		// as those filters return the slice directly to the user
 		items := make([]interface{}, 0, len(n.items))
-		
+
 		for i := 0; i < len(n.items); i++ {
 			val, err := ctx.EvaluateExpression(n.items[i])
 			if err != nil {
@@ -802,7 +802,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		// Evaluate each key-value pair in the hash using a new map
 		// We can't use pooling with defer here because the map is returned directly
 		result := make(map[string]interface{}, len(n.items))
-		
+
 		for k, v := range n.items {
 			// Evaluate the key
 			keyVal, err := ctx.EvaluateExpression(k)
@@ -839,7 +839,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 
 			// Evaluate all arguments - need direct allocation
 			args := make([]interface{}, len(n.args))
-			
+
 			for i := 0; i < len(n.args); i++ {
 				val, err := ctx.EvaluateExpression(n.args[i])
 				if err != nil {
@@ -881,7 +881,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		if macro, ok := ctx.GetMacro(n.name); ok {
 			// Evaluate arguments - need direct allocation for macro calls
 			args := make([]interface{}, len(n.args))
-			
+
 			// Evaluate arguments
 			for i := 0; i < len(n.args); i++ {
 				val, err := ctx.EvaluateExpression(n.args[i])
@@ -904,7 +904,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		// Otherwise, it's a regular function call
 		// Evaluate arguments - need direct allocation for function calls
 		args := make([]interface{}, len(n.args))
-		
+
 		// Evaluate arguments
 		for i := 0; i < len(n.args); i++ {
 			val, err := ctx.EvaluateExpression(n.args[i])
@@ -1026,7 +1026,7 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 
 		// Evaluate test arguments - need direct allocation
 		args := make([]interface{}, len(n.args))
-		
+
 		// Evaluate arguments
 		for i := 0; i < len(n.args); i++ {
 			val, err := ctx.EvaluateExpression(n.args[i])

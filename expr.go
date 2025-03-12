@@ -466,22 +466,22 @@ func NewFunctionNode(name string, args []Node, line int) *FunctionNode {
 func ParseExpressionOptimized(expr string) (Node, bool) {
 	// Trim whitespace
 	expr = strings.TrimSpace(expr)
-	
+
 	// Quick empty check
 	if len(expr) == 0 {
 		return nil, false
 	}
-	
+
 	// Try parsing as literal
 	if val, ok := ParseLiteralOptimized(expr); ok {
 		return NewLiteralNode(val, 0), true
 	}
-	
+
 	// Check for simple variable references
 	if IsValidVariableName(expr) {
 		return NewVariableNode(expr, 0), true
 	}
-	
+
 	// More complex expression - will need the full parser
 	return nil, false
 }
@@ -492,27 +492,27 @@ func ParseLiteralOptimized(expr string) (interface{}, bool) {
 	if len(expr) == 0 {
 		return nil, false
 	}
-	
+
 	// Check for string literals
-	if len(expr) >= 2 && ((expr[0] == '"' && expr[len(expr)-1] == '"') || 
-	                      (expr[0] == '\'' && expr[len(expr)-1] == '\'')) {
+	if len(expr) >= 2 && ((expr[0] == '"' && expr[len(expr)-1] == '"') ||
+		(expr[0] == '\'' && expr[len(expr)-1] == '\'')) {
 		// String literal
 		return expr[1 : len(expr)-1], true
 	}
-	
+
 	// Check for number literals
 	if isDigit(expr[0]) || (expr[0] == '-' && len(expr) > 1 && isDigit(expr[1])) {
 		// Try parsing as integer first (most common case)
 		if i, err := strconv.Atoi(expr); err == nil {
 			return i, true
 		}
-		
+
 		// Try parsing as float
 		if f, err := strconv.ParseFloat(expr, 64); err == nil {
 			return f, true
 		}
 	}
-	
+
 	// Check for boolean literals
 	if expr == "true" {
 		return true, true
@@ -523,7 +523,7 @@ func ParseLiteralOptimized(expr string) (interface{}, bool) {
 	if expr == "null" || expr == "nil" {
 		return nil, true
 	}
-	
+
 	// Not a simple literal
 	return nil, false
 }
@@ -533,25 +533,25 @@ func IsValidVariableName(name string) bool {
 	if len(name) == 0 {
 		return false
 	}
-	
+
 	// First character must be a letter or underscore
 	if !isAlpha(name[0]) {
 		return false
 	}
-	
+
 	// Rest can be letters, digits, or underscores
 	for i := 1; i < len(name); i++ {
 		if !isNameChar(name[i]) {
 			return false
 		}
 	}
-	
+
 	// Check for reserved keywords
 	switch name {
 	case "true", "false", "null", "nil", "not", "and", "or", "in", "is":
 		return false
 	}
-	
+
 	return true
 }
 
@@ -566,22 +566,22 @@ func ProcessStringEscapes(text string) (string, bool) {
 			break
 		}
 	}
-	
+
 	// If no escapes, return the original string
 	if !hasEscape {
 		return text, false
 	}
-	
+
 	// Process escapes
 	var sb strings.Builder
 	sb.Grow(len(text))
-	
+
 	i := 0
 	for i < len(text) {
 		if text[i] == '\\' && i+1 < len(text) {
 			// Escape sequence found
 			i++
-			
+
 			// Process the escape sequence
 			switch text[i] {
 			case 'n':
@@ -611,7 +611,7 @@ func ProcessStringEscapes(text string) (string, bool) {
 		}
 		i++
 	}
-	
+
 	// Return the processed string
 	return sb.String(), true
 }
@@ -623,81 +623,81 @@ func ParseNumberOptimized(text string) (interface{}, bool) {
 	if len(text) == 0 {
 		return nil, false
 	}
-	
+
 	// Check for negative sign
 	isNegative := false
 	pos := 0
-	
+
 	if text[pos] == '-' {
 		isNegative = true
 		pos++
-		
+
 		// Just a minus sign is not a number
 		if pos >= len(text) {
 			return nil, false
 		}
 	}
-	
+
 	// Parse the integer part
 	var intValue int64
 	hasDigits := false
-	
+
 	for pos < len(text) && isDigit(text[pos]) {
 		digit := int64(text[pos] - '0')
 		intValue = intValue*10 + digit
 		hasDigits = true
 		pos++
 	}
-	
+
 	if !hasDigits {
 		return nil, false
 	}
-	
+
 	// Check for decimal point
 	hasDecimal := false
 	var floatValue float64
-	
+
 	if pos < len(text) && text[pos] == '.' {
 		hasDecimal = true
 		pos++
-		
+
 		// Need at least one digit after decimal point
 		if pos >= len(text) || !isDigit(text[pos]) {
 			return nil, false
 		}
-		
+
 		// Parse the fractional part
 		floatValue = float64(intValue)
 		fraction := 0.0
 		multiplier := 0.1
-		
+
 		for pos < len(text) && isDigit(text[pos]) {
 			digit := float64(text[pos] - '0')
 			fraction += digit * multiplier
 			multiplier *= 0.1
 			pos++
 		}
-		
+
 		floatValue += fraction
 	}
-	
+
 	// Check for exponent
 	if pos < len(text) && (text[pos] == 'e' || text[pos] == 'E') {
 		hasDecimal = true
 		pos++
-		
+
 		// Parse exponent sign
 		expNegative := false
 		if pos < len(text) && (text[pos] == '+' || text[pos] == '-') {
 			expNegative = text[pos] == '-'
 			pos++
 		}
-		
+
 		// Need at least one digit in exponent
 		if pos >= len(text) || !isDigit(text[pos]) {
 			return nil, false
 		}
-		
+
 		// Parse exponent value
 		exp := 0
 		for pos < len(text) && isDigit(text[pos]) {
@@ -705,14 +705,14 @@ func ParseNumberOptimized(text string) (interface{}, bool) {
 			exp = exp*10 + digit
 			pos++
 		}
-		
+
 		// Apply exponent
 		// Convert to float regardless of hasDecimal
 		hasDecimal = true
 		if floatValue == 0 { // Not set yet
 			floatValue = float64(intValue)
 		}
-		
+
 		// Apply exponent using a more efficient approach
 		if expNegative {
 			// For negative exponents, divide by 10^exp
@@ -730,12 +730,12 @@ func ParseNumberOptimized(text string) (interface{}, bool) {
 			floatValue *= multiplier
 		}
 	}
-	
+
 	// Check that we consumed the whole string
 	if pos < len(text) {
 		return nil, false
 	}
-	
+
 	// Return the appropriate value
 	if hasDecimal {
 		if isNegative {
@@ -768,10 +768,10 @@ func isNameChar(c byte) bool {
 // This is useful for consistent hashing of variable names or strings
 func calcStringHash(s string) uint32 {
 	var h uint32
-	
+
 	for i := 0; i < len(s); i++ {
 		h = 31*h + uint32(s[i])
 	}
-	
+
 	return h
 }

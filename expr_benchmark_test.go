@@ -139,7 +139,7 @@ func BenchmarkExpressionRender(b *testing.B) {
 
 	// Create a buffer for testing
 	buf := bytes.NewBuffer(nil)
-	
+
 	// Run each benchmark
 	for _, tc := range tests {
 		b.Run(tc.name, func(b *testing.B) {
@@ -157,7 +157,7 @@ func BenchmarkExpressionRender(b *testing.B) {
 func BenchmarkFilterChain(b *testing.B) {
 	engine := New()
 	ctx := NewRenderContext(engine.environment, map[string]interface{}{
-		"a": 10,
+		"a":    10,
 		"text": "Hello, World!",
 		"html": "<p>This is a paragraph</p>",
 	}, engine)
@@ -177,12 +177,12 @@ func BenchmarkFilterChain(b *testing.B) {
 			node: NewFilterNode(
 				NewFilterNode(
 					NewVariableNode("text", 1),
-					"upper", 
-					nil, 
+					"upper",
+					nil,
 					1,
 				),
-				"trim", 
-				nil, 
+				"trim",
+				nil,
 				1,
 			),
 		},
@@ -190,11 +190,11 @@ func BenchmarkFilterChain(b *testing.B) {
 			name: "FilterWithArgs",
 			node: NewFilterNode(
 				NewVariableNode("text", 1),
-				"replace", 
+				"replace",
 				[]Node{
 					NewLiteralNode("World", 1),
 					NewLiteralNode("Universe", 1),
-				}, 
+				},
 				1,
 			),
 		},
@@ -217,8 +217,8 @@ func BenchmarkFunctionCall(b *testing.B) {
 	engine := New()
 	ctx := NewRenderContext(engine.environment, map[string]interface{}{
 		"numbers": []interface{}{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
-		"start": 1,
-		"end": 10,
+		"start":   1,
+		"end":     10,
 	}, engine)
 	defer ctx.Release()
 
@@ -265,12 +265,12 @@ func BenchmarkArgSlicePooling(b *testing.B) {
 	engine := New()
 	ctx := NewRenderContext(engine.environment, nil, engine)
 	defer ctx.Release()
-	
+
 	smallArgs := []Node{
 		NewLiteralNode(1, 1),
 		NewLiteralNode(2, 1),
 	}
-	
+
 	mediumArgs := []Node{
 		NewLiteralNode(1, 1),
 		NewLiteralNode(2, 1),
@@ -278,12 +278,12 @@ func BenchmarkArgSlicePooling(b *testing.B) {
 		NewLiteralNode(4, 1),
 		NewLiteralNode(5, 1),
 	}
-	
+
 	largeArgs := make([]Node, 10)
 	for i := 0; i < 10; i++ {
 		largeArgs[i] = NewLiteralNode(i, 1)
 	}
-	
+
 	tests := []struct {
 		name string
 		node Node
@@ -305,7 +305,7 @@ func BenchmarkArgSlicePooling(b *testing.B) {
 			node: NewFunctionNode("range", largeArgs, 1),
 		},
 	}
-	
+
 	for _, tc := range tests {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()

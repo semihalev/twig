@@ -160,13 +160,13 @@ func (b *Buffer) WriteInt(i int) (n int, err error) {
 	} else if i > -100 && i < 0 {
 		return b.WriteString(smallNegIntStrings[-i])
 	}
-	
+
 	// Optimization: manual integer formatting for common sizes
 	// Avoid the allocations in strconv.Itoa for numbers we can handle directly
 	if i >= -999999 && i <= 999999 {
 		return b.formatInt(int64(i))
 	}
-	
+
 	// For larger integers, fallback to standard formatting
 	// This still allocates, but is rare enough to be acceptable
 	s := strconv.FormatInt(int64(i), 10)
@@ -181,7 +181,7 @@ func (b *Buffer) formatInt(i int64) (int, error) {
 		b.WriteByte('-')
 		i = -i
 	}
-	
+
 	// Count digits to determine buffer size
 	var digits int
 	if i < 10 {
@@ -197,7 +197,7 @@ func (b *Buffer) formatInt(i int64) (int, error) {
 	} else {
 		digits = 6
 	}
-	
+
 	// Reserve space for the digits
 	// Compute in reverse order, then reverse the result
 	start := len(b.buf)
@@ -206,13 +206,13 @@ func (b *Buffer) formatInt(i int64) (int, error) {
 		b.buf = append(b.buf, digit)
 		i /= 10
 	}
-	
+
 	// Reverse the digits
 	end := len(b.buf) - 1
 	for j := 0; j < digits/2; j++ {
 		b.buf[start+j], b.buf[end-j] = b.buf[end-j], b.buf[start+j]
 	}
-	
+
 	return digits, nil
 }
 
@@ -226,12 +226,12 @@ func (b *Buffer) WriteFloat(f float64, fmt byte, prec int) (n int, err error) {
 			return b.formatInt(int64(f))
 		}
 	}
-	
+
 	// Special case for small, common floating-point values with 1-2 decimal places
 	if fmt == 'f' && f >= 0 && f < 1000 && (prec == 1 || prec == 2 || prec == -1) {
 		// Try to format common floats manually without allocation
 		intPart := int64(f)
-		
+
 		// Get the fractional part based on precision
 		var fracFactor int64
 		var fracPrec int
@@ -243,7 +243,7 @@ func (b *Buffer) WriteFloat(f float64, fmt byte, prec int) (n int, err error) {
 				// It's a whole number
 				return b.formatInt(intPart)
 			}
-			
+
 			// Test if 1-2 decimal places is enough
 			if fracPart*100 == float64(int64(fracPart*100)) {
 				// Two decimal places is sufficient
@@ -264,20 +264,20 @@ func (b *Buffer) WriteFloat(f float64, fmt byte, prec int) (n int, err error) {
 			fracFactor = 100
 			fracPrec = 2
 		}
-		
+
 		// Format integer part first
 		intLen, err := b.formatInt(intPart)
 		if err != nil {
 			return intLen, err
 		}
-		
+
 		// Add decimal point
 		if err := b.WriteByte('.'); err != nil {
 			return intLen, err
 		}
-		
+
 		// Format fractional part, ensuring proper padding with zeros
-		fracPart := int64((f - float64(intPart)) * float64(fracFactor) + 0.5) // Round
+		fracPart := int64((f-float64(intPart))*float64(fracFactor) + 0.5) // Round
 		if fracPart >= fracFactor {
 			// Rounding caused carry
 			fracPart = 0
@@ -291,22 +291,22 @@ func (b *Buffer) WriteFloat(f float64, fmt byte, prec int) (n int, err error) {
 				return intLen, err
 			}
 		}
-		
+
 		// Write fractional part with leading zeros if needed
 		if fracPrec == 2 && fracPart < 10 {
 			if err := b.WriteByte('0'); err != nil {
 				return intLen + 1, err
 			}
 		}
-		
+
 		fracLen, err := b.formatInt(fracPart)
 		if err != nil {
 			return intLen + 1, err
 		}
-		
+
 		return intLen + 1 + fracLen, nil
 	}
-	
+
 useStrconv:
 	// Fallback to standard formatting for complex or unusual cases
 	s := strconv.FormatFloat(f, fmt, prec, 64)
@@ -321,30 +321,30 @@ func (b *Buffer) WriteFormat(format string, args ...interface{}) (n int, err err
 	if len(args) == 0 {
 		return b.WriteString(format)
 	}
-	
+
 	startIdx := 0
 	argIdx := 0
 	totalWritten := 0
-	
+
 	// Scan the format string for format specifiers
 	for i := 0; i < len(format); i++ {
 		if format[i] != '%' {
 			continue
 		}
-		
+
 		// Found a potential format specifier
 		if i+1 >= len(format) {
 			// % at the end of the string is invalid
 			break
 		}
-		
+
 		// Check next character
 		next := format[i+1]
 		if next == '%' {
 			// It's an escaped %
 			// Write everything up to and including the first %
 			if i > startIdx {
-				written, err := b.WriteString(format[startIdx:i+1])
+				written, err := b.WriteString(format[startIdx : i+1])
 				totalWritten += written
 				if err != nil {
 					return totalWritten, err
@@ -352,10 +352,10 @@ func (b *Buffer) WriteFormat(format string, args ...interface{}) (n int, err err
 			}
 			// Skip the second %
 			i++
-			startIdx = i+1
+			startIdx = i + 1
 			continue
 		}
-		
+
 		// Write the part before the format specifier
 		if i > startIdx {
 			written, err := b.WriteString(format[startIdx:i])
@@ -364,17 +364,17 @@ func (b *Buffer) WriteFormat(format string, args ...interface{}) (n int, err err
 				return totalWritten, err
 			}
 		}
-		
+
 		// Make sure we have an argument for this specifier
 		if argIdx >= len(args) {
 			// More specifiers than arguments, skip
 			startIdx = i
 			continue
 		}
-		
+
 		arg := args[argIdx]
 		argIdx++
-		
+
 		// Process the format specifier
 		switch next {
 		case 's':
@@ -420,12 +420,12 @@ func (b *Buffer) WriteFormat(format string, args ...interface{}) (n int, err err
 			}
 			totalWritten++
 		}
-		
+
 		// Move past the format specifier
 		i++
-		startIdx = i+1
+		startIdx = i + 1
 	}
-	
+
 	// Write any remaining part of the format string
 	if startIdx < len(format) {
 		written, err := b.WriteString(format[startIdx:])
@@ -434,7 +434,7 @@ func (b *Buffer) WriteFormat(format string, args ...interface{}) (n int, err err
 			return totalWritten, err
 		}
 	}
-	
+
 	return totalWritten, nil
 }
 
@@ -446,19 +446,19 @@ func (b *Buffer) Grow(n int) {
 	if cap(b.buf) >= needed {
 		return // Already have enough capacity
 	}
-	
+
 	// Grow capacity with a smart algorithm that avoids frequent resizing
 	// Double the capacity until we have enough, but with some optimizations:
 	// - For small buffers (<1KB), grow more aggressively (2x)
 	// - For medium buffers (1KB-64KB), grow at 1.5x
 	// - For large buffers (>64KB), grow at 1.25x to avoid excessive memory usage
-	
+
 	newCap := cap(b.buf)
 	const (
 		smallBuffer  = 1024      // 1KB
 		mediumBuffer = 64 * 1024 // 64KB
 	)
-	
+
 	for newCap < needed {
 		if newCap < smallBuffer {
 			newCap *= 2 // Double small buffers
@@ -468,7 +468,7 @@ func (b *Buffer) Grow(n int) {
 			newCap = newCap + newCap/4 // Grow large buffers by 1.25x
 		}
 	}
-	
+
 	// Create new buffer with the calculated capacity
 	newBuf := make([]byte, len(b.buf), newCap)
 	copy(newBuf, b.buf)
@@ -517,16 +517,16 @@ func WriteValue(w io.Writer, val interface{}) (n int, err error) {
 	if bw, ok := w.(*Buffer); ok {
 		return writeValueToBuffer(bw, val)
 	}
-	
+
 	// If writer is a StringWriter, we can optimize some cases
 	if sw, ok := w.(io.StringWriter); ok {
 		return writeValueToStringWriter(sw, val)
 	}
-	
+
 	// Fallback path - use temp buffer for conversion to avoid allocating strings
 	buf := GetBuffer()
 	defer buf.Release()
-	
+
 	_, _ = writeValueToBuffer(buf, val)
 	return w.Write(buf.Bytes())
 }
@@ -536,7 +536,7 @@ func writeValueToBuffer(b *Buffer, val interface{}) (n int, err error) {
 	if val == nil {
 		return 0, nil
 	}
-	
+
 	switch v := val.(type) {
 	case string:
 		return b.WriteString(v)
@@ -561,7 +561,7 @@ func writeValueToStringWriter(w io.StringWriter, val interface{}) (n int, err er
 	if val == nil {
 		return 0, nil
 	}
-	
+
 	switch v := val.(type) {
 	case string:
 		return w.WriteString(v)
@@ -600,7 +600,7 @@ func stringify(val interface{}) string {
 	if val == nil {
 		return ""
 	}
-	
+
 	// Use type switch for efficient handling of common types
 	switch v := val.(type) {
 	case string:
@@ -622,7 +622,7 @@ func stringify(val interface{}) string {
 	case []byte:
 		return string(v)
 	}
-	
+
 	// Fall back to fmt.Sprintf for complex types
 	return fmt.Sprintf("%v", val)
 }
@@ -634,9 +634,9 @@ func GetTokenBuffer(templateSize int) *[]Token {
 	// For medium templates, use the medium pool
 	// For large templates, use the large pool
 	// For extremely large templates, allocate directly
-	
+
 	var buffer *[]Token
-	
+
 	if templateSize < 4*1024 {
 		// Small template
 		buffer = SmallTokenBufferPool.Get().(*[]Token)
@@ -664,10 +664,10 @@ func GetTokenBuffer(templateSize int) *[]Token {
 		newBuffer := make([]Token, 0, estimateTokenCount(templateSize))
 		buffer = &newBuffer
 	}
-	
+
 	// Clear the buffer in case it contains old tokens
 	*buffer = (*buffer)[:0]
-	
+
 	return buffer
 }
 
@@ -676,10 +676,10 @@ func ReleaseTokenBuffer(buffer *[]Token) {
 	if buffer == nil {
 		return
 	}
-	
+
 	// Clear the buffer to prevent memory leaks
 	*buffer = (*buffer)[:0]
-	
+
 	// Put back in the appropriate pool based on capacity
 	cap := cap(*buffer)
 	if cap <= 64 {
@@ -699,7 +699,7 @@ func GetTokenBufferWithCapacity(capacity int) *[]Token {
 	// For large capacity requests, use the large pool
 	// For very large capacity requests, allocate directly
 	var buffer *[]Token
-	
+
 	if capacity <= 64 {
 		buffer = SmallTokenBufferPool.Get().(*[]Token)
 		if cap(*buffer) < capacity {
@@ -720,10 +720,10 @@ func GetTokenBufferWithCapacity(capacity int) *[]Token {
 		newBuffer := make([]Token, 0, capacity)
 		buffer = &newBuffer
 	}
-	
+
 	// Clear the buffer
 	*buffer = (*buffer)[:0]
-	
+
 	return buffer
 }
 
@@ -734,7 +734,7 @@ func RecycleTokens(tokens []Token) []Token {
 	if len(tokens) == 0 {
 		return []Token{}
 	}
-	
+
 	// Create a new slice with the same backing array
 	recycled := tokens[:0]
 	return recycled
@@ -747,7 +747,7 @@ func estimateTokenCount(templateSize int) int {
 	// - Small templates: ~1 token per 12 bytes
 	// - Medium templates: ~1 token per 15 bytes
 	// - Large templates: ~1 token per 20 bytes
-	
+
 	if templateSize < 4*1024 {
 		// Small template
 		return max(64, templateSize/12+16)

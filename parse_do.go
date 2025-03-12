@@ -21,11 +21,11 @@ func (p *Parser) parseDo(parser *Parser) (Node, error) {
 		// Look ahead to find possible assignment patterns
 		// We need to check for NUMBER = EXPR which is invalid
 		// as well as NAME = EXPR which is valid
-		
+
 		// Check if we have an equals sign in the next few tokens
 		hasAssignment := false
 		equalsPosition := -1
-		
+
 		// Scan ahead a bit to find possible equals sign
 		for i := 0; i < 3 && parser.tokenIndex+i < len(parser.tokens); i++ {
 			token := parser.tokens[parser.tokenIndex+i]
@@ -34,44 +34,44 @@ func (p *Parser) parseDo(parser *Parser) (Node, error) {
 				equalsPosition = i
 				break
 			}
-			
+
 			// Stop scanning if we hit the end of the block
 			if token.Type == TOKEN_BLOCK_END {
 				break
 			}
 		}
-		
+
 		// If we found an equals sign, analyze the left-hand side
 		if hasAssignment && equalsPosition > 0 {
 			firstToken := parser.tokens[parser.tokenIndex]
-			
+
 			// Check if the left-hand side is a valid variable name
 			isValidVariableName := firstToken.Type == TOKEN_NAME
-			
+
 			// If the left-hand side is a number or literal, that's an error
 			if !isValidVariableName {
 				return nil, fmt.Errorf("invalid variable name %q in do tag assignment at line %d", firstToken.Value, doLine)
 			}
-		
+
 			// Handle assignment case
 			if isValidVariableName && hasAssignment {
 				varName := parser.tokens[parser.tokenIndex].Value
-				
+
 				// Skip tokens up to and including the equals sign
 				parser.tokenIndex += equalsPosition + 1
-				
+
 				// Parse the right side expression
 				expr, err := parser.parseExpression()
 				if err != nil {
 					return nil, fmt.Errorf("error parsing expression in do assignment at line %d: %w", doLine, err)
 				}
-				
+
 				// Make sure we have the closing tag
 				if parser.tokenIndex >= len(parser.tokens) || parser.tokens[parser.tokenIndex].Type != TOKEN_BLOCK_END {
 					return nil, fmt.Errorf("expecting end of do tag at line %d", doLine)
 				}
 				parser.tokenIndex++
-				
+
 				// Additional validation for variable name
 				if _, err := strconv.Atoi(varName); err == nil {
 					return nil, fmt.Errorf("invalid variable name %q in do tag assignment at line %d", varName, doLine)

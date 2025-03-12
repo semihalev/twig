@@ -57,10 +57,10 @@ func BenchmarkRenderContextCloning(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// Clone the context - this should reuse memory from pools
 		child := parent.Clone()
-		
+
 		// Do some operations on the child context
 		child.SetVariable("newVar", "test value")
-		
+
 		// Release the child context
 		child.Release()
 	}
@@ -115,10 +115,10 @@ func BenchmarkContextVariableLookup(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// Test variable lookup at different levels
-		level2.GetVariable("level2Var") // Local var
-		level2.GetVariable("level1Var") // Parent var
-		level2.GetVariable("rootVar")   // Root var
-		level2.GetVariable("shared")    // Shadowed var
+		level2.GetVariable("level2Var")      // Local var
+		level2.GetVariable("level1Var")      // Parent var
+		level2.GetVariable("rootVar")        // Root var
+		level2.GetVariable("shared")         // Shadowed var
 		level2.GetVariable("nonExistentVar") // Missing var
 	}
 

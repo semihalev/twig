@@ -10,7 +10,7 @@ func processWhitespaceControl(tokens []Token) []Token {
 
 	// Modify tokens in-place to avoid allocation
 	// This works because we're only changing token values, not adding/removing tokens
-	
+
 	// Process each token to apply whitespace trimming
 	for i := 0; i < len(tokens); i++ {
 		token := tokens[i]

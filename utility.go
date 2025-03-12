@@ -25,7 +25,7 @@ func WriteString(w io.Writer, s string) (int, error) {
 	if sw, ok := w.(io.StringWriter); ok {
 		return sw.WriteString(s)
 	}
-	
+
 	// Fast path for our own Buffer type
 	if buf, ok := w.(*Buffer); ok {
 		return buf.WriteString(s)
@@ -46,14 +46,14 @@ func WriteFormat(w io.Writer, format string, args ...interface{}) (int, error) {
 	if buf, ok := w.(*Buffer); ok {
 		return buf.WriteFormat(format, args...)
 	}
-	
+
 	// Use a pooled buffer for other writer types
 	buf := GetBuffer()
 	defer buf.Release()
-	
+
 	// Write the formatted string to the buffer
 	buf.WriteFormat(format, args...)
-	
+
 	// Write the buffer to the writer
 	return w.Write(buf.Bytes())
 }
@@ -67,7 +67,7 @@ func FormatInt(i int) string {
 	} else if i > -100 && i < 0 {
 		return smallNegIntStrings[-i]
 	}
-	
+
 	// Fall back to standard formatting
 	return strconv.Itoa(i)
 }
