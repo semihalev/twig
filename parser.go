@@ -59,19 +59,28 @@ func (p *Parser) Parse(source string) (Node, error) {
 	// Initialize default block handlers
 	p.initBlockHandlers()
 
-	// Use the HTML-preserving tokenizer to preserve HTML content exactly
+	// Use the zero-allocation tokenizer for maximum performance and minimal allocations
 	// This will treat everything outside twig tags as TEXT tokens
 	var err error
-	p.tokens, err = p.htmlPreservingTokenize()
+	
+	// Use the zero-allocation tokenizer to achieve minimal memory usage and high performance
+	tokenizer := GetTokenizer(p.source, 0)
+	p.tokens, err = tokenizer.TokenizeHtmlPreserving()
+	
+	// Apply whitespace control to handle whitespace trimming directives
+	if err == nil {
+		tokenizer.ApplyWhitespaceControl()
+	}
+	
+	// Release the tokenizer back to the pool
+	ReleaseTokenizer(tokenizer)
+	
 	if err != nil {
 		return nil, fmt.Errorf("tokenization error: %w", err)
 	}
 
 	// Template tokenization complete
-
-	// Apply whitespace control processing to the tokens to handle
-	// the whitespace trimming between template elements
-	p.tokens = processWhitespaceControl(p.tokens)
+	// Whitespace control has already been applied by the tokenizer
 
 	// Parse tokens into nodes
 	nodes, err := p.parseOuterTemplate()

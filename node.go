@@ -49,78 +49,42 @@ func NewForNode(keyVar, valueVar string, sequence Node, body, elseBranch []Node,
 
 // NewBlockNode creates a new block node
 func NewBlockNode(name string, body []Node, line int) *BlockNode {
-	return &BlockNode{
-		name: name,
-		body: body,
-		line: line,
-	}
+	return GetBlockNode(name, body, line)
 }
 
 // NewExtendsNode creates a new extends node
 func NewExtendsNode(parent Node, line int) *ExtendsNode {
-	return &ExtendsNode{
-		parent: parent,
-		line:   line,
-	}
+	return GetExtendsNode(parent, line)
 }
 
 // NewIncludeNode creates a new include node
 func NewIncludeNode(template Node, variables map[string]Node, ignoreMissing, only, sandboxed bool, line int) *IncludeNode {
-	return &IncludeNode{
-		template:      template,
-		variables:     variables,
-		ignoreMissing: ignoreMissing,
-		only:          only,
-		sandboxed:     sandboxed,
-		line:          line,
-	}
+	return GetIncludeNode(template, variables, ignoreMissing, only, sandboxed, line)
 }
 
 // NewSetNode creates a new set node
 func NewSetNode(name string, value Node, line int) *SetNode {
-	return &SetNode{
-		name:  name,
-		value: value,
-		line:  line,
-	}
+	return GetSetNode(name, value, line)
 }
 
 // NewCommentNode creates a new comment node
 func NewCommentNode(content string, line int) *CommentNode {
-	return &CommentNode{
-		content: content,
-		line:    line,
-	}
+	return GetCommentNode(content, line)
 }
 
 // NewMacroNode creates a new macro node
 func NewMacroNode(name string, params []string, defaults map[string]Node, body []Node, line int) *MacroNode {
-	return &MacroNode{
-		name:     name,
-		params:   params,
-		defaults: defaults,
-		body:     body,
-		line:     line,
-	}
+	return GetMacroNode(name, params, defaults, body, line)
 }
 
 // NewImportNode creates a new import node
 func NewImportNode(template Node, module string, line int) *ImportNode {
-	return &ImportNode{
-		template: template,
-		module:   module,
-		line:     line,
-	}
+	return GetImportNode(template, module, line)
 }
 
 // NewFromImportNode creates a new from import node
 func NewFromImportNode(template Node, macros []string, aliases map[string]string, line int) *FromImportNode {
-	return &FromImportNode{
-		template: template,
-		macros:   macros,
-		aliases:  aliases,
-		line:     line,
-	}
+	return GetFromImportNode(template, macros, aliases, line)
 }
 
 // NodeType represents the type of a node
@@ -614,6 +578,11 @@ func (n *BlockNode) Line() int {
 	return n.line
 }
 
+// Release returns a BlockNode to the pool
+func (n *BlockNode) Release() {
+	ReleaseBlockNode(n)
+}
+
 // Render renders the block node
 func (n *BlockNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Determine which content to use - from context blocks or default
@@ -674,6 +643,11 @@ func (n *ExtendsNode) Type() NodeType {
 
 func (n *ExtendsNode) Line() int {
 	return n.line
+}
+
+// Release returns an ExtendsNode to the pool
+func (n *ExtendsNode) Release() {
+	ReleaseExtendsNode(n)
 }
 
 // Implement Node interface for ExtendsNode
@@ -778,6 +752,11 @@ func (n *IncludeNode) Type() NodeType {
 
 func (n *IncludeNode) Line() int {
 	return n.line
+}
+
+// Release returns an IncludeNode to the pool
+func (n *IncludeNode) Release() {
+	ReleaseIncludeNode(n)
 }
 
 // Implement Node interface for IncludeNode
@@ -898,6 +877,11 @@ func (n *SetNode) Line() int {
 	return n.line
 }
 
+// Release returns a SetNode to the pool
+func (n *SetNode) Release() {
+	ReleaseSetNode(n)
+}
+
 // Render renders the set node
 func (n *SetNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Evaluate the value
@@ -919,10 +903,7 @@ type DoNode struct {
 
 // NewDoNode creates a new DoNode
 func NewDoNode(expression Node, line int) *DoNode {
-	return &DoNode{
-		expression: expression,
-		line:       line,
-	}
+	return GetDoNode(expression, line)
 }
 
 func (n *DoNode) Type() NodeType {
@@ -931,6 +912,11 @@ func (n *DoNode) Type() NodeType {
 
 func (n *DoNode) Line() int {
 	return n.line
+}
+
+// Release returns a DoNode to the pool
+func (n *DoNode) Release() {
+	ReleaseDoNode(n)
 }
 
 // Render evaluates the expression but doesn't write anything
@@ -954,6 +940,11 @@ func (n *CommentNode) Line() int {
 	return n.line
 }
 
+// Release returns a CommentNode to the pool
+func (n *CommentNode) Release() {
+	ReleaseCommentNode(n)
+}
+
 // Render renders the comment node (does nothing, as comments are not rendered)
 func (n *CommentNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Comments are not rendered
@@ -975,6 +966,11 @@ func (n *MacroNode) Type() NodeType {
 
 func (n *MacroNode) Line() int {
 	return n.line
+}
+
+// Release returns a MacroNode to the pool
+func (n *MacroNode) Release() {
+	ReleaseMacroNode(n)
 }
 
 // Render renders the macro node
@@ -1165,6 +1161,11 @@ func (n *ImportNode) Line() int {
 	return n.line
 }
 
+// Release returns an ImportNode to the pool
+func (n *ImportNode) Release() {
+	ReleaseImportNode(n)
+}
+
 // Implement Node interface for ImportNode
 func (n *ImportNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Get the template name
@@ -1247,6 +1248,11 @@ func (n *FromImportNode) Type() NodeType {
 
 func (n *FromImportNode) Line() int {
 	return n.line
+}
+
+// Release returns a FromImportNode to the pool
+func (n *FromImportNode) Release() {
+	ReleaseFromImportNode(n)
 }
 
 // Implement Node interface for FromImportNode
@@ -1332,10 +1338,7 @@ type VerbatimNode struct {
 
 // NewVerbatimNode creates a new verbatim node
 func NewVerbatimNode(content string, line int) *VerbatimNode {
-	return &VerbatimNode{
-		content: content,
-		line:    line,
-	}
+	return GetVerbatimNode(content, line)
 }
 
 func (n *VerbatimNode) Type() NodeType {
@@ -1344,6 +1347,11 @@ func (n *VerbatimNode) Type() NodeType {
 
 func (n *VerbatimNode) Line() int {
 	return n.line
+}
+
+// Release returns a VerbatimNode to the pool
+func (n *VerbatimNode) Release() {
+	ReleaseVerbatimNode(n)
 }
 
 // Render renders the verbatim node (outputs raw content without processing)
@@ -1381,12 +1389,7 @@ type ApplyNode struct {
 
 // NewApplyNode creates a new apply node
 func NewApplyNode(body []Node, filter string, args []Node, line int) *ApplyNode {
-	return &ApplyNode{
-		body:   body,
-		filter: filter,
-		args:   args,
-		line:   line,
-	}
+	return GetApplyNode(body, filter, args, line)
 }
 
 func (n *ApplyNode) Type() NodeType {
@@ -1395,6 +1398,11 @@ func (n *ApplyNode) Type() NodeType {
 
 func (n *ApplyNode) Line() int {
 	return n.line
+}
+
+// Release returns an ApplyNode to the pool
+func (n *ApplyNode) Release() {
+	ReleaseApplyNode(n)
 }
 
 // Render renders the apply node by applying a filter to the rendered body

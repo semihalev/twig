@@ -162,7 +162,6 @@ func (p *Parser) parseMacro(parser *Parser) (Node, error) {
 			}
 
 			paramName := parser.tokens[parser.tokenIndex].Value
-			fmt.Println("DEBUG: Parameter name:", paramName)
 			params = append(params, paramName)
 			parser.tokenIndex++
 

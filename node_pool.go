@@ -79,53 +79,8 @@ func ReleaseRootNode(node *RootNode) {
 	RootNodePool.Put(node)
 }
 
-// LiteralNodePool provides a pool for LiteralNode objects
-var LiteralNodePool = sync.Pool{
-	New: func() interface{} {
-		return &LiteralNode{}
-	},
-}
-
-// GetLiteralNode gets a LiteralNode from the pool and initializes it
-func GetLiteralNode(value interface{}, line int) *LiteralNode {
-	node := LiteralNodePool.Get().(*LiteralNode)
-	node.value = value
-	node.line = line
-	return node
-}
-
-// ReleaseLiteralNode returns a LiteralNode to the pool
-func ReleaseLiteralNode(node *LiteralNode) {
-	if node == nil {
-		return
-	}
-	node.value = nil
-	LiteralNodePool.Put(node)
-}
-
-// VariableNodePool provides a pool for VariableNode objects
-var VariableNodePool = sync.Pool{
-	New: func() interface{} {
-		return &VariableNode{}
-	},
-}
-
-// GetVariableNode gets a VariableNode from the pool and initializes it
-func GetVariableNode(name string, line int) *VariableNode {
-	node := VariableNodePool.Get().(*VariableNode)
-	node.name = name
-	node.line = line
-	return node
-}
-
-// ReleaseVariableNode returns a VariableNode to the pool
-func ReleaseVariableNode(node *VariableNode) {
-	if node == nil {
-		return
-	}
-	node.name = ""
-	VariableNodePool.Put(node)
-}
+// Note: LiteralNodePool, GetLiteralNode, ReleaseLiteralNode moved to expr_pool.go
+// Note: VariableNodePool, GetVariableNode, ReleaseVariableNode moved to expr_pool.go
 
 // TokenPool provides a pool for Token objects
 var TokenPool = sync.Pool{

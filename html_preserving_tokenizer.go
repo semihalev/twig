@@ -82,7 +82,7 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 			if nextTagPos-1 > currentPosition {
 				preText := p.source[currentPosition : nextTagPos-1]
 				tokens = append(tokens, createToken(TOKEN_TEXT, preText, line))
-				line += strings.Count(preText, "\n")
+				line += countNewlines(preText)
 			}
 
 			// Add the tag itself as literal text (without the backslash)
@@ -97,7 +97,7 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 			// No more tags found, add the rest as TEXT
 			content := p.source[currentPosition:]
 			if len(content) > 0 {
-				line += strings.Count(content, "\n")
+				line += countNewlines(content)
 				tokens = append(tokens, createToken(TOKEN_TEXT, content, line))
 			}
 			break
@@ -106,7 +106,7 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 		// Add the text before the tag (HTML content)
 		if nextTagPos > currentPosition {
 			content := p.source[currentPosition:nextTagPos]
-			line += strings.Count(content, "\n")
+			line += countNewlines(content)
 			tokens = append(tokens, createToken(TOKEN_TEXT, content, line))
 		}
 
@@ -176,7 +176,7 @@ func (p *Parser) htmlPreservingTokenize() ([]Token, error) {
 
 		// Get the content between the tags
 		tagContent := p.source[currentPosition : currentPosition+endPos]
-		line += strings.Count(tagContent, "\n") // Update line count
+		line += countNewlines(tagContent) // Update line count
 
 		// Process the content between the tags based on tag type
 		if tagType == TOKEN_COMMENT_START {

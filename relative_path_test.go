@@ -80,7 +80,13 @@ func TestRelativePathsWithFromImport(t *testing.T) {
 
 	// Create simple macro templates
 	macrosTemplate := `{% macro simple() %}Macro output{% endmacro %}`
+	
+	// Print the template content for debugging
+	t.Logf("Simple template content: %s", macrosTemplate)
+	
+	// Note: The template needs to be in the format: {% from "template" import macro %}
 	useTemplate := `{% from "./simple.twig" import simple %}{{ simple() }}`
+	t.Logf("Use template content: %s", useTemplate)
 
 	// Write templates to files
 	err = os.WriteFile(filepath.Join(macrosDir, "simple.twig"), []byte(macrosTemplate), 0644)

@@ -179,39 +179,17 @@ func NewVariableNode(name string, line int) *VariableNode {
 
 // NewBinaryNode creates a new binary operation node
 func NewBinaryNode(operator string, left, right Node, line int) *BinaryNode {
-	return &BinaryNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprBinary,
-			line:     line,
-		},
-		operator: operator,
-		left:     left,
-		right:    right,
-	}
+	return GetBinaryNode(operator, left, right, line)
 }
 
 // NewGetAttrNode creates a new attribute access node
 func NewGetAttrNode(node, attribute Node, line int) *GetAttrNode {
-	return &GetAttrNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprGetAttr,
-			line:     line,
-		},
-		node:      node,
-		attribute: attribute,
-	}
+	return GetGetAttrNode(node, attribute, line)
 }
 
 // NewGetItemNode creates a new item access node
 func NewGetItemNode(node, item Node, line int) *GetItemNode {
-	return &GetItemNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprGetItem,
-			line:     line,
-		},
-		node: node,
-		item: item,
-	}
+	return GetGetItemNode(node, item, line)
 }
 
 // Render implementation for VariableNode
@@ -279,6 +257,11 @@ func (n *GetAttrNode) Render(w io.Writer, ctx *RenderContext) error {
 	return err
 }
 
+// Release returns a GetAttrNode to the pool
+func (n *GetAttrNode) Release() {
+	ReleaseGetAttrNode(n)
+}
+
 // Render implementation for GetItemNode
 func (n *GetItemNode) Render(w io.Writer, ctx *RenderContext) error {
 	container, err := ctx.EvaluateExpression(n.node)
@@ -301,6 +284,11 @@ func (n *GetItemNode) Render(w io.Writer, ctx *RenderContext) error {
 	return err
 }
 
+// Release returns a GetItemNode to the pool
+func (n *GetItemNode) Release() {
+	ReleaseGetItemNode(n)
+}
+
 // Render implementation for BinaryNode
 func (n *BinaryNode) Render(w io.Writer, ctx *RenderContext) error {
 	result, err := ctx.EvaluateExpression(n)
@@ -311,6 +299,11 @@ func (n *BinaryNode) Render(w io.Writer, ctx *RenderContext) error {
 	str := ctx.ToString(result)
 	_, err = WriteString(w, str)
 	return err
+}
+
+// Release returns a BinaryNode to the pool
+func (n *BinaryNode) Release() {
+	ReleaseBinaryNode(n)
 }
 
 // Render implementation for FilterNode
@@ -325,6 +318,11 @@ func (n *FilterNode) Render(w io.Writer, ctx *RenderContext) error {
 	return err
 }
 
+// Release returns a FilterNode to the pool
+func (n *FilterNode) Release() {
+	ReleaseFilterNode(n)
+}
+
 // Render implementation for TestNode
 func (n *TestNode) Render(w io.Writer, ctx *RenderContext) error {
 	result, err := ctx.EvaluateExpression(n)
@@ -335,6 +333,11 @@ func (n *TestNode) Render(w io.Writer, ctx *RenderContext) error {
 	str := ctx.ToString(result)
 	_, err = WriteString(w, str)
 	return err
+}
+
+// Release returns a TestNode to the pool
+func (n *TestNode) Release() {
+	ReleaseTestNode(n)
 }
 
 // Render implementation for UnaryNode
@@ -349,6 +352,11 @@ func (n *UnaryNode) Render(w io.Writer, ctx *RenderContext) error {
 	return err
 }
 
+// Release returns a UnaryNode to the pool
+func (n *UnaryNode) Release() {
+	ReleaseUnaryNode(n)
+}
+
 // Render implementation for ConditionalNode
 func (n *ConditionalNode) Render(w io.Writer, ctx *RenderContext) error {
 	result, err := ctx.EvaluateExpression(n)
@@ -359,6 +367,11 @@ func (n *ConditionalNode) Render(w io.Writer, ctx *RenderContext) error {
 	str := ctx.ToString(result)
 	_, err = WriteString(w, str)
 	return err
+}
+
+// Release returns a ConditionalNode to the pool
+func (n *ConditionalNode) Release() {
+	ReleaseConditionalNode(n)
 }
 
 // Render implementation for ArrayNode
@@ -373,6 +386,11 @@ func (n *ArrayNode) Render(w io.Writer, ctx *RenderContext) error {
 	return err
 }
 
+// Release returns an ArrayNode to the pool
+func (n *ArrayNode) Release() {
+	ReleaseArrayNode(n)
+}
+
 // Render implementation for HashNode
 func (n *HashNode) Render(w io.Writer, ctx *RenderContext) error {
 	result, err := ctx.EvaluateExpression(n)
@@ -383,6 +401,11 @@ func (n *HashNode) Render(w io.Writer, ctx *RenderContext) error {
 	str := ctx.ToString(result)
 	_, err = WriteString(w, str)
 	return err
+}
+
+// Release returns a HashNode to the pool
+func (n *HashNode) Release() {
+	ReleaseHashNode(n)
 }
 
 // Render implementation for FunctionNode
@@ -397,87 +420,42 @@ func (n *FunctionNode) Render(w io.Writer, ctx *RenderContext) error {
 	return err
 }
 
+// Release returns a FunctionNode to the pool
+func (n *FunctionNode) Release() {
+	ReleaseFunctionNode(n)
+}
+
 // NewFilterNode creates a new filter node
 func NewFilterNode(node Node, filter string, args []Node, line int) *FilterNode {
-	return &FilterNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprFilter,
-			line:     line,
-		},
-		node:   node,
-		filter: filter,
-		args:   args,
-	}
+	return GetFilterNode(node, filter, args, line)
 }
 
 // NewTestNode creates a new test node
 func NewTestNode(node Node, test string, args []Node, line int) *TestNode {
-	return &TestNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprTest,
-			line:     line,
-		},
-		node: node,
-		test: test,
-		args: args,
-	}
+	return GetTestNode(node, test, args, line)
 }
 
 // NewUnaryNode creates a new unary operation node
 func NewUnaryNode(operator string, node Node, line int) *UnaryNode {
-	return &UnaryNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprUnary,
-			line:     line,
-		},
-		operator: operator,
-		node:     node,
-	}
+	return GetUnaryNode(operator, node, line)
 }
 
 // NewConditionalNode creates a new conditional (ternary) node
 func NewConditionalNode(condition, trueExpr, falseExpr Node, line int) *ConditionalNode {
-	return &ConditionalNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprConditional,
-			line:     line,
-		},
-		condition: condition,
-		trueExpr:  trueExpr,
-		falseExpr: falseExpr,
-	}
+	return GetConditionalNode(condition, trueExpr, falseExpr, line)
 }
 
 // NewArrayNode creates a new array node
 func NewArrayNode(items []Node, line int) *ArrayNode {
-	return &ArrayNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprArray,
-			line:     line,
-		},
-		items: items,
-	}
+	return GetArrayNode(items, line)
 }
 
 // NewHashNode creates a new hash node
 func NewHashNode(items map[Node]Node, line int) *HashNode {
-	return &HashNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprHash,
-			line:     line,
-		},
-		items: items,
-	}
+	return GetHashNode(items, line)
 }
 
 // NewFunctionNode creates a new function call node
 func NewFunctionNode(name string, args []Node, line int) *FunctionNode {
-	return &FunctionNode{
-		ExpressionNode: ExpressionNode{
-			exprType: ExprFunction,
-			line:     line,
-		},
-		name: name,
-		args: args,
-	}
+	return GetFunctionNode(name, args, line)
 }

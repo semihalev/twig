@@ -30,14 +30,35 @@ type RenderContext struct {
 	sandboxed    bool       // Flag indicating if this context is sandboxed
 }
 
+// contextMapPool is a pool for the maps used in RenderContext
+var contextMapPool = sync.Pool{
+	New: func() interface{} {
+		return make(map[string]interface{}, 16) // Pre-allocate with reasonable size
+	},
+}
+
+// blocksMapPool is a pool for the blocks map used in RenderContext
+var blocksMapPool = sync.Pool{
+	New: func() interface{} {
+		return make(map[string][]Node, 8) // Pre-allocate with reasonable size
+	},
+}
+
+// macrosMapPool is a pool for the macros map used in RenderContext
+var macrosMapPool = sync.Pool{
+	New: func() interface{} {
+		return make(map[string]Node, 8) // Pre-allocate with reasonable size
+	},
+}
+
 // renderContextPool is a sync.Pool for RenderContext objects
 var renderContextPool = sync.Pool{
 	New: func() interface{} {
 		return &RenderContext{
-			context:      make(map[string]interface{}),
-			blocks:       make(map[string][]Node),
-			parentBlocks: make(map[string][]Node),
-			macros:       make(map[string]Node),
+			context:      contextMapPool.Get().(map[string]interface{}),
+			blocks:       blocksMapPool.Get().(map[string][]Node),
+			parentBlocks: blocksMapPool.Get().(map[string][]Node),
+			macros:       macrosMapPool.Get().(map[string]Node),
 		}
 	},
 }
@@ -46,17 +67,44 @@ var renderContextPool = sync.Pool{
 func NewRenderContext(env *Environment, context map[string]interface{}, engine *Engine) *RenderContext {
 	ctx := renderContextPool.Get().(*RenderContext)
 
-	// Reset and initialize the context
-	for k := range ctx.context {
-		delete(ctx.context, k)
-	}
-	for k := range ctx.blocks {
-		delete(ctx.blocks, k)
-	}
-	for k := range ctx.macros {
-		delete(ctx.macros, k)
+	// Ensure all maps are initialized (should be from the pool)
+	if ctx.context == nil {
+		ctx.context = contextMapPool.Get().(map[string]interface{})
+	} else {
+		// Clear any existing data
+		for k := range ctx.context {
+			delete(ctx.context, k)
+		}
 	}
 
+	if ctx.blocks == nil {
+		ctx.blocks = blocksMapPool.Get().(map[string][]Node)
+	} else {
+		// Clear any existing data
+		for k := range ctx.blocks {
+			delete(ctx.blocks, k)
+		}
+	}
+
+	if ctx.parentBlocks == nil {
+		ctx.parentBlocks = blocksMapPool.Get().(map[string][]Node)
+	} else {
+		// Clear any existing data
+		for k := range ctx.parentBlocks {
+			delete(ctx.parentBlocks, k)
+		}
+	}
+
+	if ctx.macros == nil {
+		ctx.macros = macrosMapPool.Get().(map[string]Node)
+	} else {
+		// Clear any existing data
+		for k := range ctx.macros {
+			delete(ctx.macros, k)
+		}
+	}
+
+	// Set basic properties
 	ctx.env = env
 	ctx.engine = engine
 	ctx.extending = false
@@ -65,7 +113,7 @@ func NewRenderContext(env *Environment, context map[string]interface{}, engine *
 	ctx.inParentCall = false
 	ctx.sandboxed = false
 
-	// Copy the context values
+	// Copy the context values directly
 	if context != nil {
 		for k, v := range context {
 			ctx.context[k] = v
@@ -82,25 +130,52 @@ func (ctx *RenderContext) Release() {
 	ctx.engine = nil
 	ctx.currentBlock = nil
 
-	// Clear map contents but keep allocated maps
-	for k := range ctx.context {
-		delete(ctx.context, k)
-	}
-	for k := range ctx.blocks {
-		delete(ctx.blocks, k)
-	}
-	for k := range ctx.parentBlocks {
-		delete(ctx.parentBlocks, k)
-	}
-	for k := range ctx.macros {
-		delete(ctx.macros, k)
-	}
+	// Save the maps so we can return them to their respective pools
+	contextMap := ctx.context
+	blocksMap := ctx.blocks
+	parentBlocksMap := ctx.parentBlocks
+	macrosMap := ctx.macros
+
+	// Clear the maps from the context
+	ctx.context = nil
+	ctx.blocks = nil
+	ctx.parentBlocks = nil
+	ctx.macros = nil
 
 	// Don't release parent contexts - they'll be released separately
 	ctx.parent = nil
 
 	// Return to pool
 	renderContextPool.Put(ctx)
+
+	// Clear map contents and return them to their pools
+	if contextMap != nil {
+		for k := range contextMap {
+			delete(contextMap, k)
+		}
+		contextMapPool.Put(contextMap)
+	}
+
+	if blocksMap != nil {
+		for k := range blocksMap {
+			delete(blocksMap, k)
+		}
+		blocksMapPool.Put(blocksMap)
+	}
+
+	if parentBlocksMap != nil {
+		for k := range parentBlocksMap {
+			delete(parentBlocksMap, k)
+		}
+		blocksMapPool.Put(parentBlocksMap)
+	}
+
+	if macrosMap != nil {
+		for k := range macrosMap {
+			delete(macrosMap, k)
+		}
+		macrosMapPool.Put(macrosMap)
+	}
 }
 
 // Error types
@@ -242,21 +317,63 @@ func (ctx *RenderContext) IsSandboxed() bool {
 
 // Clone creates a new context as a child of the current context
 func (ctx *RenderContext) Clone() *RenderContext {
-	// Create a new context
-	newCtx := NewRenderContext(ctx.env, make(map[string]interface{}), ctx.engine)
+	// Get a new context from the pool with empty maps
+	newCtx := renderContextPool.Get().(*RenderContext)
 
-	// Set parent relationship
+	// Initialize the context
+	newCtx.env = ctx.env
+	newCtx.engine = ctx.engine
+	newCtx.extending = false
+	newCtx.currentBlock = nil
 	newCtx.parent = ctx
+	newCtx.inParentCall = false
 
 	// Inherit sandbox state
 	newCtx.sandboxed = ctx.sandboxed
 
-	// Copy blocks
+	// Ensure maps are initialized (they should be from the pool already)
+	if newCtx.context == nil {
+		newCtx.context = contextMapPool.Get().(map[string]interface{})
+	} else {
+		// Clear any existing data
+		for k := range newCtx.context {
+			delete(newCtx.context, k)
+		}
+	}
+
+	if newCtx.blocks == nil {
+		newCtx.blocks = blocksMapPool.Get().(map[string][]Node)
+	} else {
+		// Clear any existing data
+		for k := range newCtx.blocks {
+			delete(newCtx.blocks, k)
+		}
+	}
+
+	if newCtx.macros == nil {
+		newCtx.macros = macrosMapPool.Get().(map[string]Node)
+	} else {
+		// Clear any existing data
+		for k := range newCtx.macros {
+			delete(newCtx.macros, k)
+		}
+	}
+
+	if newCtx.parentBlocks == nil {
+		newCtx.parentBlocks = blocksMapPool.Get().(map[string][]Node)
+	} else {
+		// Clear any existing data
+		for k := range newCtx.parentBlocks {
+			delete(newCtx.parentBlocks, k)
+		}
+	}
+
+	// Copy blocks by reference (no need to deep copy)
 	for name, nodes := range ctx.blocks {
 		newCtx.blocks[name] = nodes
 	}
 
-	// Copy macros
+	// Copy macros by reference (no need to deep copy)
 	for name, macro := range ctx.macros {
 		newCtx.macros[name] = macro
 	}
@@ -287,14 +404,14 @@ func (ctx *RenderContext) GetMacros() map[string]Node {
 // InitMacros initializes the macros map if it's nil
 func (ctx *RenderContext) InitMacros() {
 	if ctx.macros == nil {
-		ctx.macros = make(map[string]Node)
+		ctx.macros = macrosMapPool.Get().(map[string]Node)
 	}
 }
 
 // SetMacro sets a macro in the context
 func (ctx *RenderContext) SetMacro(name string, macro Node) {
 	if ctx.macros == nil {
-		ctx.macros = make(map[string]Node)
+		ctx.macros = macrosMapPool.Get().(map[string]Node)
 	}
 	ctx.macros[name] = macro
 }
@@ -658,14 +775,16 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		}
 
 	case *ArrayNode:
-		// Evaluate each item in the array
-		items := make([]interface{}, len(n.items))
-		for i, item := range n.items {
-			val, err := ctx.EvaluateExpression(item)
+		// We need to avoid pooling for arrays that might be directly used by filters like merge
+		// as those filters return the slice directly to the user
+		items := make([]interface{}, 0, len(n.items))
+		
+		for i := 0; i < len(n.items); i++ {
+			val, err := ctx.EvaluateExpression(n.items[i])
 			if err != nil {
 				return nil, err
 			}
-			items[i] = val
+			items = append(items, val)
 		}
 
 		// Always return a non-nil slice, even if empty
@@ -676,8 +795,10 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		return items, nil
 
 	case *HashNode:
-		// Evaluate each key-value pair in the hash
-		result := make(map[string]interface{})
+		// Evaluate each key-value pair in the hash using a new map
+		// We can't use pooling with defer here because the map is returned directly
+		result := make(map[string]interface{}, len(n.items))
+		
 		for k, v := range n.items {
 			// Evaluate the key
 			keyVal, err := ctx.EvaluateExpression(k)
@@ -712,10 +833,11 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 				return nil, err
 			}
 
-			// Evaluate all arguments
+			// Evaluate all arguments - need direct allocation
 			args := make([]interface{}, len(n.args))
-			for i, arg := range n.args {
-				val, err := ctx.EvaluateExpression(arg)
+			
+			for i := 0; i < len(n.args); i++ {
+				val, err := ctx.EvaluateExpression(n.args[i])
 				if err != nil {
 					return nil, err
 				}
@@ -753,10 +875,12 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 
 		// Check if it's a macro call
 		if macro, ok := ctx.GetMacro(n.name); ok {
-			// Evaluate arguments
+			// Evaluate arguments - need direct allocation for macro calls
 			args := make([]interface{}, len(n.args))
-			for i, arg := range n.args {
-				val, err := ctx.EvaluateExpression(arg)
+			
+			// Evaluate arguments
+			for i := 0; i < len(n.args); i++ {
+				val, err := ctx.EvaluateExpression(n.args[i])
 				if err != nil {
 					return nil, err
 				}
@@ -774,10 +898,12 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 		}
 
 		// Otherwise, it's a regular function call
-		// Evaluate arguments
+		// Evaluate arguments - need direct allocation for function calls
 		args := make([]interface{}, len(n.args))
-		for i, arg := range n.args {
-			val, err := ctx.EvaluateExpression(arg)
+		
+		// Evaluate arguments
+		for i := 0; i < len(n.args); i++ {
+			val, err := ctx.EvaluateExpression(n.args[i])
 			if err != nil {
 				return nil, err
 			}
@@ -894,10 +1020,12 @@ func (ctx *RenderContext) EvaluateExpression(node Node) (interface{}, error) {
 			return nil, err
 		}
 
-		// Evaluate test arguments
+		// Evaluate test arguments - need direct allocation
 		args := make([]interface{}, len(n.args))
-		for i, arg := range n.args {
-			val, err := ctx.EvaluateExpression(arg)
+		
+		// Evaluate arguments
+		for i := 0; i < len(n.args); i++ {
+			val, err := ctx.EvaluateExpression(n.args[i])
 			if err != nil {
 				return nil, err
 			}

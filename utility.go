@@ -6,6 +6,18 @@ import (
 	"sync"
 )
 
+// countNewlines counts newlines in a string without allocations.
+// This is a zero-allocation replacement for strings.Count(s, "\n")
+func countNewlines(s string) int {
+	count := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			count++
+		}
+	}
+	return count
+}
+
 // byteBufferPool is used to reuse byte buffers during node rendering
 var byteBufferPool = sync.Pool{
 	New: func() interface{} {
