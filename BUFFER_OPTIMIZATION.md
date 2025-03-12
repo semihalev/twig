@@ -118,9 +118,80 @@ The optimized buffer is now used throughout the template engine:
 3. **String Formatting** - Added `WriteFormat` for efficient format strings
 4. **Pool Reuse** - Buffers are consistently recycled back to the pool
 
+## String Interning Implementation
+
+We have now implemented string interning as part of our zero-allocation optimization strategy:
+
+### 1. Global String Cache
+
+A centralized global string cache provides efficient string deduplication:
+
+```go
+// GlobalStringCache provides a centralized cache for string interning
+type GlobalStringCache struct {
+    sync.RWMutex
+    strings map[string]string
+}
+```
+
+### 2. Fast Path Optimization
+
+To avoid lock contention and map lookups for common strings:
+
+```go
+// Fast path for very common strings
+switch s {
+case stringDiv, stringSpan, stringP, stringA, stringImg, 
+     stringIf, stringFor, stringEnd, stringEndif, stringEndfor, 
+     stringElse, "":
+    return s
+}
+```
+
+### 3. Size-Based Optimization
+
+To prevent memory bloat, we only intern strings below a certain size:
+
+```go
+// Don't intern strings that are too long
+if len(s) > maxCacheableLength {
+    return s
+}
+```
+
+### 4. Concurrency-Safe Design
+
+The implementation uses a combination of read and write locks for better performance:
+
+```go
+// Use read lock for lookup first (less contention)
+globalCache.RLock()
+cached, exists := globalCache.strings[s]
+globalCache.RUnlock()
+
+if exists {
+    return cached
+}
+
+// Not found with read lock, acquire write lock to add
+globalCache.Lock()
+defer globalCache.Unlock()
+```
+
+### 5. Benchmark Results
+
+The string interning benchmark shows significant improvements:
+
+```
+BenchmarkStringIntern_Comparison/OriginalGetStringConstant-8   154,611  7,746 ns/op   0 B/op  0 allocs/op
+BenchmarkStringIntern_Comparison/GlobalIntern-8                813,786  1,492 ns/op   0 B/op  0 allocs/op
+```
+
+The global string interning is about 5.2 times faster than the original method.
+
 ## Future Optimization Opportunities
 
-1. **String Interning** - Deduplicate identical strings to further reduce memory usage
+1. **Tokenizer Pooling** - Create a pool for the OptimizedTokenizer to reduce allocations
 2. **Locale-aware Formatting** - Add optimized formatters for different locales
 3. **Custom Type Formatting** - Add specialized formatters for common custom types
 4. **Buffer Size Prediction** - Predict optimal initial buffer size based on template

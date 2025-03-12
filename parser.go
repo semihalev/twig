@@ -59,21 +59,28 @@ func (p *Parser) Parse(source string) (Node, error) {
 	// Initialize default block handlers
 	p.initBlockHandlers()
 
-	// Use the zero-allocation tokenizer for maximum performance and minimal allocations
+	// Use the optimized tokenizer for maximum performance and minimal allocations
 	// This will treat everything outside twig tags as TEXT tokens
 	var err error
 	
-	// Use the zero-allocation tokenizer to achieve minimal memory usage and high performance
-	tokenizer := GetTokenizer(p.source, 0)
-	p.tokens, err = tokenizer.TokenizeHtmlPreserving()
+	// Use optimized tokenizer with global string cache for better performance
+	optimizedTokenizer := NewOptimizedTokenizer()
+	
+	// Set the source for the base tokenizer
+	optimizedTokenizer.baseTokenizer.source = p.source
+	optimizedTokenizer.baseTokenizer.position = 0
+	optimizedTokenizer.baseTokenizer.line = 1
+	
+	// Tokenize using the optimized tokenizer
+	p.tokens, err = optimizedTokenizer.TokenizeHtmlPreserving()
 	
 	// Apply whitespace control to handle whitespace trimming directives
 	if err == nil {
-		tokenizer.ApplyWhitespaceControl()
+		optimizedTokenizer.ApplyWhitespaceControl()
 	}
 	
-	// Release the tokenizer back to the pool
-	ReleaseTokenizer(tokenizer)
+	// Return the tokenizer to the pool
+	ReleaseOptimizedTokenizer(optimizedTokenizer)
 	
 	if err != nil {
 		return nil, fmt.Errorf("tokenization error: %w", err)
