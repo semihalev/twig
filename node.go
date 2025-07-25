@@ -720,13 +720,14 @@ func (n *ExtendsNode) Render(w io.Writer, ctx *RenderContext) error {
 	// Extract blocks from the parent template and store them as parent blocks
 	// for any blocks defined in the child but not yet in the parent chain
 	if rootNode, ok := parentTemplate.nodes.(*RootNode); ok {
-		for _, child := range rootNode.Children() {
-			if block, ok := child.(*BlockNode); ok {
-				// If we don't already have a parent for this block,
-				// use the parent template's block definition
-				if _, exists := parentCtx.parentBlocks[block.name]; !exists {
-					parentCtx.parentBlocks[block.name] = block.body
-				}
+		// Use recursive collection to find all blocks in parent template
+		parentBlocks := make(map[string][]Node)
+		collectBlocks(rootNode, parentBlocks)
+
+		// Store parent blocks that we don't already have
+		for blockName, blockBody := range parentBlocks {
+			if _, exists := parentCtx.parentBlocks[blockName]; !exists {
+				parentCtx.parentBlocks[blockName] = blockBody
 			}
 		}
 	}
@@ -1458,6 +1459,55 @@ func (n *ApplyNode) Render(w io.Writer, ctx *RenderContext) error {
 	return err
 }
 
+// collectBlocks recursively collects all block definitions from a node tree
+func collectBlocks(node Node, blocks map[string][]Node) {
+	switch n := node.(type) {
+	case *BlockNode:
+		// Found a block - register it
+		blocks[n.name] = n.body
+	case *RootNode:
+		// Recursively collect from all children
+		for _, child := range n.children {
+			collectBlocks(child, blocks)
+		}
+	case *IfNode:
+		// Collect blocks from all branches
+		for _, body := range n.bodies {
+			for _, child := range body {
+				collectBlocks(child, blocks)
+			}
+		}
+		// Also check else branch
+		for _, child := range n.elseBranch {
+			collectBlocks(child, blocks)
+		}
+	case *ForNode:
+		// Collect blocks from for body
+		for _, child := range n.body {
+			collectBlocks(child, blocks)
+		}
+		// Also check else branch
+		for _, child := range n.elseBranch {
+			collectBlocks(child, blocks)
+		}
+	case *SetNode:
+		// SetNode doesn't have body, skip
+	case *ApplyNode:
+		// Collect blocks from apply body
+		for _, child := range n.body {
+			collectBlocks(child, blocks)
+		}
+	case *MacroNode:
+		// Collect blocks from macro body
+		for _, child := range n.body {
+			collectBlocks(child, blocks)
+		}
+	case *VerbatimNode:
+		// VerbatimNode contains raw content, no blocks to collect
+		// Add other node types that can contain children as needed
+	}
+}
+
 // Implement Node interface for RootNode
 func (n *RootNode) Render(w io.Writer, ctx *RenderContext) error {
 	// First pass: collect blocks and check for extends
@@ -1472,14 +1522,22 @@ func (n *RootNode) Render(w io.Writer, ctx *RenderContext) error {
 
 	// First register all blocks in this template before processing extends
 	// Needed to ensure all blocks are available for parent() calls
+	// Use recursive collection to find blocks at all levels
+	templateBlocks := make(map[string][]Node)
+	collectBlocks(n, templateBlocks)
+
+	// Register collected blocks
+	for blockName, blockBody := range templateBlocks {
+		// Only register blocks that haven't been defined by a child template
+		if !hasChildBlocks || ctx.blocks[blockName] == nil {
+			// Register the block
+			ctx.blocks[blockName] = blockBody
+		}
+	}
+
+	// Check for extends node at top level
 	for _, child := range n.children {
-		if block, ok := child.(*BlockNode); ok {
-			// Only register blocks that haven't been defined by a child template
-			if !hasChildBlocks || ctx.blocks[block.name] == nil {
-				// Register the block
-				ctx.blocks[block.name] = block.body
-			}
-		} else if ext, ok := child.(*ExtendsNode); ok {
+		if ext, ok := child.(*ExtendsNode); ok {
 			// If this is an extends node, record it for later
 			extendsNode = ext
 		}
